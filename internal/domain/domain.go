@@ -28,6 +28,11 @@ type User struct {
 	Name string
 }
 
+type Team struct {
+	ID   TeamID
+	Name string
+}
+
 type Principal struct {
 	User  UserID
 	Teams []TeamID

@@ -27,6 +27,8 @@ ah publish --visibility public ./testdata/hello
 
 `GET` the returned `url`. Owner and team sites need `Authorization: Bearer <token>` on read.
 
+Admin UI is `/admin` (login with the admin token). Create users, rotate tokens, teams, delete sites. Tokens are shown once after create or rotate.
+
 ## API
 
 | Method | Path | Who |

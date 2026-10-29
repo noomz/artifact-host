@@ -48,6 +48,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sites", s.publish)
 	mux.HandleFunc("GET /s/{id}", s.serve)
 	mux.HandleFunc("GET /s/{id}/{path...}", s.serve)
+	s.mountAdmin(mux)
 	return mux
 }
 

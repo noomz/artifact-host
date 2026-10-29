@@ -1,0 +1,131 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>artifact-host admin</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font: 14px/1.45 ui-sans-serif, system-ui, sans-serif; background: #111; color: #eee; margin: 0; }
+  header { display: flex; justify-content: space-between; align-items: center; padding: 0.85rem 1.25rem; border-bottom: 1px solid #2a2a2a; }
+  header h1 { font-size: 1rem; margin: 0; font-weight: 600; }
+  header form { margin: 0; }
+  main { max-width: 72rem; margin: 0 auto; padding: 1.25rem; }
+  section { margin: 0 0 2rem; }
+  h2 { font-size: 0.95rem; margin: 0 0 0.75rem; color: #bbb; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid #2a2a2a; vertical-align: top; }
+  th { color: #888; font-weight: 500; font-size: 0.8rem; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
+  a { color: #93c5fd; }
+  form.inline { display: inline; }
+  input, select, button { font: inherit; }
+  input[type=text] { padding: 0.35rem 0.5rem; border: 1px solid #333; border-radius: 5px; background: #1a1a1a; color: #eee; }
+  button { padding: 0.3rem 0.65rem; border: 0; border-radius: 5px; background: #2a2a2a; color: #eee; cursor: pointer; }
+  button.primary { background: #3b82f6; color: #fff; }
+  button.danger { background: transparent; color: #f87171; }
+  .row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 0.75rem 0; }
+  .flash { background: #172554; border: 1px solid #1d4ed8; padding: 0.75rem 1rem; border-radius: 8px; margin: 0 0 1.25rem; }
+  .flash input { width: min(100%, 40rem); }
+  .err { color: #f87171; margin: 0 0 1rem; }
+  .muted { color: #888; }
+</style>
+<header>
+  <h1>artifact-host</h1>
+  <form method="post" action="/admin/logout"><button type="submit">Sign out</button></form>
+</header>
+<main>
+  {{if .Err}}<p class="err">{{.Err}}</p>{{end}}
+  {{if .FlashToken}}
+  <div class="flash">
+    <p>New token for <strong>{{.FlashName}}</strong>. Shown once.</p>
+    <div class="row">
+      <input id="tok" class="mono" readonly value="{{.FlashToken}}">
+      <button type="button" onclick="navigator.clipboard.writeText(document.getElementById('tok').value)">Copy</button>
+    </div>
+  </div>
+  {{end}}
+
+  <section>
+    <h2>Users</h2>
+    <form class="row" method="post" action="/admin/users">
+      <input name="name" type="text" placeholder="name" required>
+      <button class="primary" type="submit">Create user</button>
+    </form>
+    <table>
+      <thead><tr><th>Name</th><th>ID</th><th></th></tr></thead>
+      <tbody>
+      {{range .Users}}
+        <tr>
+          <td>{{.Name}}</td>
+          <td class="mono">{{.ID}}</td>
+          <td>
+            <form class="inline" method="post" action="/admin/users/{{.ID}}/rotate"><button type="submit">Rotate token</button></form>
+            <form class="inline" method="post" action="/admin/users/{{.ID}}/delete" onsubmit="return confirm('Delete user {{.Name}}?')"><button class="danger" type="submit">Delete</button></form>
+          </td>
+        </tr>
+      {{else}}
+        <tr><td colspan="3" class="muted">No users</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Teams</h2>
+    <form class="row" method="post" action="/admin/teams">
+      <input name="name" type="text" placeholder="team name" required>
+      <button class="primary" type="submit">Create team</button>
+    </form>
+    {{range $t := .Teams}}
+      <div class="row">
+        <strong>{{$t.Team.Name}}</strong> <span class="mono muted">{{$t.Team.ID}}</span>
+        <form class="inline" method="post" action="/admin/teams/{{$t.Team.ID}}/delete" onsubmit="return confirm('Delete team {{$t.Team.Name}}?')"><button class="danger" type="submit">Delete team</button></form>
+      </div>
+      <form class="row" method="post" action="/admin/teams/{{$t.Team.ID}}/members">
+        <select name="user_id" required>
+          <option value="">add member…</option>
+          {{range $.Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+        <button type="submit">Add</button>
+      </form>
+      <table>
+        <tbody>
+        {{range $t.Members}}
+          <tr>
+            <td>{{.Name}}</td>
+            <td class="mono">{{.ID}}</td>
+            <td>
+              <form class="inline" method="post" action="/admin/teams/{{$t.Team.ID}}/members/{{.ID}}/delete"><button class="danger" type="submit">Remove</button></form>
+            </td>
+          </tr>
+        {{else}}
+          <tr><td class="muted" colspan="3">No members</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+    {{else}}
+      <p class="muted">No teams</p>
+    {{end}}
+  </section>
+
+  <section>
+    <h2>Sites</h2>
+    <table>
+      <thead><tr><th>ID</th><th>Visibility</th><th>Owner</th><th>Team</th><th></th></tr></thead>
+      <tbody>
+      {{range .Sites}}
+        <tr>
+          <td class="mono"><a href="{{$.Base}}/s/{{.ID}}/">{{.ID}}</a></td>
+          <td>{{.Visibility}}</td>
+          <td class="mono">{{.Owner}}</td>
+          <td class="mono">{{.Team}}</td>
+          <td>
+            <form class="inline" method="post" action="/admin/sites/{{.ID}}/delete" onsubmit="return confirm('Delete site?')"><button class="danger" type="submit">Delete</button></form>
+          </td>
+        </tr>
+      {{else}}
+        <tr><td colspan="5" class="muted">No sites</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </section>
+</main>

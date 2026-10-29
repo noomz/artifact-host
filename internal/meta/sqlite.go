@@ -178,6 +178,181 @@ func nullVersion(v domain.VersionID) any {
 	return string(v)
 }
 
+func (m *DB) ListUsers(ctx context.Context) ([]domain.User, error) {
+	rows, err := m.sql.QueryContext(ctx, `SELECT id, name FROM users ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.User
+	for rows.Next() {
+		var u domain.User
+		if err := rows.Scan(&u.ID, &u.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+func (m *DB) SetUserTokenHash(ctx context.Context, id domain.UserID, tokenHash []byte) error {
+	res, err := m.sql.ExecContext(ctx, `UPDATE users SET token_hash = ? WHERE id = ?`, tokenHash, id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+func (m *DB) CountSitesByOwner(ctx context.Context, id domain.UserID) (int, error) {
+	var n int
+	err := m.sql.QueryRowContext(ctx, `SELECT COUNT(*) FROM sites WHERE owner_id = ?`, id).Scan(&n)
+	return n, err
+}
+
+func (m *DB) DeleteUser(ctx context.Context, id domain.UserID) error {
+	n, err := m.CountSitesByOwner(ctx, id)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		return domain.ErrInvalid
+	}
+	res, err := m.sql.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+func (m *DB) ListTeams(ctx context.Context) ([]domain.Team, error) {
+	rows, err := m.sql.QueryContext(ctx, `SELECT id, name FROM teams ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Team
+	for rows.Next() {
+		var t domain.Team
+		if err := rows.Scan(&t.ID, &t.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+func (m *DB) Team(ctx context.Context, id domain.TeamID) (domain.Team, error) {
+	var t domain.Team
+	err := m.sql.QueryRowContext(ctx, `SELECT id, name FROM teams WHERE id = ?`, id).Scan(&t.ID, &t.Name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.Team{}, domain.ErrNotFound
+	}
+	return t, err
+}
+
+func (m *DB) Members(ctx context.Context, team domain.TeamID) ([]domain.User, error) {
+	rows, err := m.sql.QueryContext(ctx, `SELECT u.id, u.name FROM team_members m JOIN users u ON u.id = m.user_id WHERE m.team_id = ? ORDER BY u.name`, team)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.User
+	for rows.Next() {
+		var u domain.User
+		if err := rows.Scan(&u.ID, &u.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+func (m *DB) RemoveMember(ctx context.Context, team domain.TeamID, user domain.UserID) error {
+	_, err := m.sql.ExecContext(ctx, `DELETE FROM team_members WHERE team_id = ? AND user_id = ?`, team, user)
+	return err
+}
+
+func (m *DB) CountSitesByTeam(ctx context.Context, id domain.TeamID) (int, error) {
+	var n int
+	err := m.sql.QueryRowContext(ctx, `SELECT COUNT(*) FROM sites WHERE team_id = ?`, id).Scan(&n)
+	return n, err
+}
+
+func (m *DB) DeleteTeam(ctx context.Context, id domain.TeamID) error {
+	n, err := m.CountSitesByTeam(ctx, id)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		return domain.ErrInvalid
+	}
+	res, err := m.sql.ExecContext(ctx, `DELETE FROM teams WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+func (m *DB) ListSites(ctx context.Context) ([]domain.Site, error) {
+	rows, err := m.sql.QueryContext(ctx, `SELECT id, owner_id, team_id, visibility, current_version FROM sites ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Site
+	for rows.Next() {
+		var s domain.Site
+		var team, cur sql.NullString
+		if err := rows.Scan(&s.ID, &s.Owner, &team, &s.Visibility, &cur); err != nil {
+			return nil, err
+		}
+		if team.Valid {
+			s.Team = domain.TeamID(team.String)
+		}
+		if cur.Valid {
+			s.Current = domain.VersionID(cur.String)
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+func (m *DB) DeleteSite(ctx context.Context, id domain.SiteID) error {
+	res, err := m.sql.ExecContext(ctx, `DELETE FROM sites WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 func (m *DB) Ping(ctx context.Context) error {
 	if err := m.sql.PingContext(ctx); err != nil {
 		return fmt.Errorf("sqlite: %w", err)
