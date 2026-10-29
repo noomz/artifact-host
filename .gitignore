@@ -7,3 +7,4 @@ todo.md
 .audit/
 dist/
 data/
+deploy/.env

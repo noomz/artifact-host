@@ -1,0 +1,19 @@
+services:
+  ah:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8088:8080"
+    env_file:
+      - .env
+    environment:
+      ARTIFACT_HOST_LISTEN: ":8080"
+      ARTIFACT_HOST_SQLITE: /data/artifact-host.db
+      ARTIFACT_HOST_BASE_URL: https://artifacts.noomz.space
+      ARTIFACT_HOST_S3_BUCKET: noomz-artifact-host
+      ARTIFACT_HOST_S3_REGION: ap-southeast-1
+      AWS_REGION: ap-southeast-1
+    volumes:
+      - /opt/artifact-host/data:/data

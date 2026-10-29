@@ -37,6 +37,8 @@ ah publish --visibility public ./testdata/hello
 | `POST` | `/v1/sites` | user token, tar body, headers `Visibility`, optional `Site-Id`, `Team-Id` |
 | `GET` | `/s/{id}/...` | ACL on the site |
 
+Production on proxy-a is `https://artifacts.noomz.space`. Install: `deploy/install-proxy-a.sh` (nginx like `stm.noomz.space`, bucket `noomz-artifact-host` in `ap-southeast-1`). Put AWS keys in `/opt/artifact-host/.env` on the host.
+
 The agent skill is `skill/SKILL.md`. Copy it into the agent's skills directory.
 
 ## Build
