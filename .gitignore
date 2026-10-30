@@ -8,3 +8,5 @@ todo.md
 dist/
 data/
 deploy/.env
+
+SECURITY-REVIEW.md
