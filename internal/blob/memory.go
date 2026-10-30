@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"strings"
 	"sync"
 )
 
@@ -27,6 +28,17 @@ func (m *Memory) Put(_ context.Context, key string, body []byte, contentType str
 	m.mu.Lock()
 	m.objs[key] = memObj{body: cp, contentType: contentType}
 	m.mu.Unlock()
+	return nil
+}
+
+func (m *Memory) DeletePrefix(_ context.Context, prefix string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for k := range m.objs {
+		if strings.HasPrefix(k, prefix) {
+			delete(m.objs, k)
+		}
+	}
 	return nil
 }
 

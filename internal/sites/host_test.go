@@ -140,6 +140,21 @@ func TestRepublishNewVersion(t *testing.T) {
 	}
 }
 
+func TestDeleteSiteRemovesBlob(t *testing.T) {
+	h, actor := setup(t)
+	ctx := context.Background()
+	out, err := h.Publish(ctx, actor, PublishIn{Visibility: domain.VisPublic, Files: html()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.DeleteSite(ctx, out.Site); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := h.Open(ctx, nil, out.Site, "index.html"); err != domain.ErrNotFound {
+		t.Fatalf("open after delete: %v", err)
+	}
+}
+
 func TestStrangerCannotRepublish(t *testing.T) {
 	h, actor := setup(t)
 	ctx := context.Background()

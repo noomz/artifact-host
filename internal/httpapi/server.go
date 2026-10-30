@@ -23,6 +23,8 @@ type Server struct {
 	newUserID func() domain.UserID
 	newTeamID func() domain.TeamID
 	newToken  func() (raw string, hash []byte)
+	sessions  *sessionStore
+	logins    *loginLimit
 }
 
 func New(h *sites.Host, admin, baseURL string) *Server {
@@ -33,6 +35,8 @@ func New(h *sites.Host, admin, baseURL string) *Server {
 		newUserID: func() domain.UserID { return domain.UserID(sites.NewID()) },
 		newTeamID: func() domain.TeamID { return domain.TeamID(sites.NewID()) },
 		newToken:  newToken,
+		sessions:  newSessionStore(),
+		logins:    newLoginLimit(),
 	}
 }
 
@@ -167,6 +171,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", ctype)
 	}
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-popups allow-modals")
 	_, _ = io.Copy(w, body)
 }
 

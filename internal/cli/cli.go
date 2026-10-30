@@ -53,8 +53,8 @@ func cmdServe(args []string) int {
 		return 2
 	}
 	admin := os.Getenv("ARTIFACT_HOST_ADMIN_TOKEN")
-	if admin == "" {
-		fmt.Fprintln(os.Stderr, "ARTIFACT_HOST_ADMIN_TOKEN is required")
+	if err := httpapi.ValidateAdminToken(admin); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
 	if *bucket == "" {

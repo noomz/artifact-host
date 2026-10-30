@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/noomz/artifact-host/internal/blob"
@@ -96,6 +97,9 @@ func TestHTTPPublishAndGet(t *testing.T) {
 	defer gres.Body.Close()
 	if gres.StatusCode != 200 {
 		t.Fatalf("get %d", gres.StatusCode)
+	}
+	if !strings.Contains(gres.Header.Get("Content-Security-Policy"), "sandbox") {
+		t.Fatalf("csp %q", gres.Header.Get("Content-Security-Policy"))
 	}
 	b, _ := io.ReadAll(gres.Body)
 	if string(b) != "<p>ok</p>" {

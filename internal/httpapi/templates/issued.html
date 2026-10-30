@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>artifact-host admin</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font: 14px/1.45 ui-sans-serif, system-ui, sans-serif; background: #111; color: #eee; margin: 0; }
+  main { max-width: 40rem; margin: 3rem auto; padding: 0 1.25rem; }
+  .flash { background: #172554; border: 1px solid #1d4ed8; padding: 0.75rem 1rem; border-radius: 8px; }
+  input { width: min(100%, 40rem); box-sizing: border-box; padding: 0.45rem 0.55rem; border: 1px solid #333; border-radius: 5px; background: #1a1a1a; color: #eee; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
+  button, a { font: inherit; }
+  button { padding: 0.3rem 0.65rem; border: 0; border-radius: 5px; background: #3b82f6; color: #fff; cursor: pointer; }
+  a { color: #93c5fd; }
+  .row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+</style>
+<main>
+  <div class="flash">
+    <p>New token for <strong>{{.Name}}</strong>. Shown once. Copy it now.</p>
+    <div class="row">
+      <input id="tok" readonly value="{{.Token}}">
+      <button type="button" onclick="navigator.clipboard.writeText(document.getElementById('tok').value)">Copy</button>
+    </div>
+  </div>
+  <p><a href="/admin">Back to admin</a></p>
+</main>

@@ -81,6 +81,42 @@ func (s *S3) Put(ctx context.Context, key string, body []byte, contentType strin
 	return err
 }
 
+func (s *S3) DeletePrefix(ctx context.Context, prefix string) error {
+	p := s.key(prefix)
+	var token *string
+	for {
+		out, err := s.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+			Bucket:            aws.String(s.bucket),
+			Prefix:            aws.String(p),
+			ContinuationToken: token,
+		})
+		if err != nil {
+			return err
+		}
+		if len(out.Contents) == 0 {
+			if !aws.ToBool(out.IsTruncated) {
+				return nil
+			}
+		} else {
+			objs := make([]types.ObjectIdentifier, 0, len(out.Contents))
+			for _, o := range out.Contents {
+				objs = append(objs, types.ObjectIdentifier{Key: o.Key})
+			}
+			_, err = s.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+				Bucket: aws.String(s.bucket),
+				Delete: &types.Delete{Objects: objs, Quiet: aws.Bool(true)},
+			})
+			if err != nil {
+				return err
+			}
+		}
+		if !aws.ToBool(out.IsTruncated) {
+			return nil
+		}
+		token = out.NextContinuationToken
+	}
+}
+
 func (s *S3) Get(ctx context.Context, key string) (io.ReadCloser, string, error) {
 	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),

@@ -130,6 +130,19 @@ func (h *Host) Open(ctx context.Context, actor *domain.Principal, siteID domain.
 	return r, ctype, nil
 }
 
+func (h *Host) DeleteSite(ctx context.Context, id domain.SiteID) error {
+	if id == "" {
+		return domain.ErrInvalid
+	}
+	if _, err := h.Meta.Site(ctx, id); err != nil {
+		return err
+	}
+	if err := h.Blob.DeletePrefix(ctx, string(id)+"/"); err != nil {
+		return err
+	}
+	return h.Meta.DeleteSite(ctx, id)
+}
+
 func objectKey(site domain.SiteID, ver domain.VersionID, p string) string {
 	return string(site) + "/" + string(ver) + "/" + p
 }

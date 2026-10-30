@@ -27,7 +27,7 @@ ah publish --visibility public ./testdata/hello
 
 `GET` the returned `url`. Owner and team sites need `Authorization: Bearer <token>` on read.
 
-Admin UI is `/admin` (login with the admin token). Create users, rotate tokens, teams, delete sites. Tokens are shown once after create or rotate.
+Admin UI is `/admin` (login with the admin token). Sessions are random ids, not the admin token. Create users, rotate tokens, teams, delete sites. New tokens are shown once on the POST response. Published pages get `Content-Security-Policy: sandbox` so they cannot use the admin cookie. A separate user-content origin is still the long-term isolation.
 
 ## API
 

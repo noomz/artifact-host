@@ -5,7 +5,6 @@ import (
 	"embed"
 	"html/template"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/noomz/artifact-host/internal/domain"
@@ -17,12 +16,18 @@ var adminFS embed.FS
 var (
 	tplLogin     = template.Must(template.ParseFS(adminFS, "templates/login.html"))
 	tplDashboard = template.Must(template.ParseFS(adminFS, "templates/dashboard.html"))
+	tplIssued    = template.Must(template.ParseFS(adminFS, "templates/issued.html"))
 )
 
-const (
-	cookieAdmin = "ah_admin"
-	cookieFlash = "ah_flash"
-)
+var adminErrText = map[string]string{
+	"bad_form":       "That form was not valid.",
+	"bad_token":      "That token was not accepted.",
+	"rate":           "Too many sign-in attempts. Wait and try again.",
+	"name":           "A name is required.",
+	"user_required":  "Pick a user.",
+	"owns_sites":     "That user still owns sites.",
+	"team_sites":     "That team is still used by sites.",
+}
 
 type teamView struct {
 	Team    domain.Team
@@ -30,13 +35,15 @@ type teamView struct {
 }
 
 type dashData struct {
-	Users      []domain.User
-	Teams      []teamView
-	Sites      []domain.Site
-	Base       string
-	Err        string
-	FlashToken string
-	FlashName  string
+	Users []domain.User
+	Teams []teamView
+	Sites []domain.Site
+	Base  string
+	Err   string
+}
+
+func adminErrMsg(code string) string {
+	return adminErrText[code]
 }
 
 func (s *Server) mountAdmin(mux *http.ServeMux) {
@@ -54,30 +61,53 @@ func (s *Server) mountAdmin(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/sites/{id}/delete", s.adminDeleteSite)
 }
 
+func adminHeaders(w http.ResponseWriter) {
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+}
+
 func (s *Server) adminLoginGET(w http.ResponseWriter, r *http.Request) {
-	if s.cookieAdminOK(r) {
+	if s.sessionOK(r) {
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 		return
 	}
-	_ = tplLogin.Execute(w, map[string]string{"Err": r.URL.Query().Get("err")})
+	adminHeaders(w)
+	_ = tplLogin.Execute(w, map[string]string{"Err": adminErrMsg(r.URL.Query().Get("err"))})
 }
 
 func (s *Server) adminLoginPOST(w http.ResponseWriter, r *http.Request) {
+	ip := clientIP(r)
+	if !s.logins.allow(ip) {
+		http.Redirect(w, r, "/admin/login?err=rate", http.StatusSeeOther)
+		return
+	}
 	if err := r.ParseForm(); err != nil {
-		http.Redirect(w, r, "/admin/login?err="+url.QueryEscape("bad form"), http.StatusSeeOther)
+		http.Redirect(w, r, "/admin/login?err=bad_form", http.StatusSeeOther)
 		return
 	}
 	tok := strings.TrimSpace(r.FormValue("token"))
 	if !s.adminEq(tok) {
-		http.Redirect(w, r, "/admin/login?err="+url.QueryEscape("bad token"), http.StatusSeeOther)
+		s.logins.record(ip)
+		http.Redirect(w, r, "/admin/login?err=bad_token", http.StatusSeeOther)
 		return
 	}
-	http.SetCookie(w, s.adminCookie(r, tok, 86400*14))
+	s.logins.clear(ip)
+	sid, err := s.sessions.issue()
+	if err != nil {
+		http.Error(w, "session", http.StatusInternalServerError)
+		return
+	}
+	http.SetCookie(w, s.sessionCookie(r, sid, int(sessionTTL.Seconds())))
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
 func (s *Server) adminLogout(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, s.adminCookie(r, "", -1))
+	if c, err := r.Cookie(cookieSession); err == nil {
+		s.sessions.revoke(c.Value)
+	}
+	http.SetCookie(w, s.sessionCookie(r, "", -1))
 	http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
 }
 
@@ -90,14 +120,8 @@ func (s *Server) adminHome(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	data.Err = r.URL.Query().Get("err")
-	data.FlashName = r.URL.Query().Get("issued")
-	if c, err := r.Cookie(cookieFlash); err == nil && c.Value != "" {
-		data.FlashToken = c.Value
-		http.SetCookie(w, s.flashCookie(r, "", -1))
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
+	data.Err = adminErrMsg(r.URL.Query().Get("err"))
+	adminHeaders(w)
 	_ = tplDashboard.Execute(w, data)
 }
 
@@ -106,22 +130,21 @@ func (s *Server) adminCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		s.adminErr(w, r, "bad form")
+		s.adminErr(w, r, "bad_form")
 		return
 	}
 	name := strings.TrimSpace(r.FormValue("name"))
 	if name == "" {
-		s.adminErr(w, r, "name required")
+		s.adminErr(w, r, "name")
 		return
 	}
 	raw, hash := s.newToken()
 	id := s.newUserID()
 	if err := s.Host.Meta.CreateUser(r.Context(), id, name, hash); err != nil {
-		s.adminErr(w, r, err.Error())
+		s.adminErr(w, r, "bad_form")
 		return
 	}
-	http.SetCookie(w, s.flashCookie(r, raw, 60))
-	http.Redirect(w, r, "/admin?issued="+url.QueryEscape(name), http.StatusSeeOther)
+	s.renderIssued(w, name, raw)
 }
 
 func (s *Server) adminRotateUser(w http.ResponseWriter, r *http.Request) {
@@ -131,16 +154,20 @@ func (s *Server) adminRotateUser(w http.ResponseWriter, r *http.Request) {
 	id := domain.UserID(r.PathValue("id"))
 	u, err := s.Host.Meta.User(r.Context(), id)
 	if err != nil {
-		s.adminErr(w, r, err.Error())
+		s.adminErr(w, r, "bad_form")
 		return
 	}
 	raw, hash := s.newToken()
 	if err := s.Host.Meta.SetUserTokenHash(r.Context(), id, hash); err != nil {
-		s.adminErr(w, r, err.Error())
+		s.adminErr(w, r, "bad_form")
 		return
 	}
-	http.SetCookie(w, s.flashCookie(r, raw, 60))
-	http.Redirect(w, r, "/admin?issued="+url.QueryEscape(u.Name), http.StatusSeeOther)
+	s.renderIssued(w, u.Name, raw)
+}
+
+func (s *Server) renderIssued(w http.ResponseWriter, name, token string) {
+	adminHeaders(w)
+	_ = tplIssued.Execute(w, map[string]string{"Name": name, "Token": token})
 }
 
 func (s *Server) adminDeleteUser(w http.ResponseWriter, r *http.Request) {
@@ -149,10 +176,10 @@ func (s *Server) adminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.Host.Meta.DeleteUser(r.Context(), domain.UserID(r.PathValue("id"))); err != nil {
 		if err == domain.ErrInvalid {
-			s.adminErr(w, r, "user still owns sites")
+			s.adminErr(w, r, "owns_sites")
 			return
 		}
-		s.adminErr(w, r, err.Error())
+		s.adminErr(w, r, "bad_form")
 		return
 	}
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
@@ -163,16 +190,16 @@ func (s *Server) adminCreateTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		s.adminErr(w, r, "bad form")
+		s.adminErr(w, r, "bad_form")
 		return
 	}
 	name := strings.TrimSpace(r.FormValue("name"))
 	if name == "" {
-		s.adminErr(w, r, "name required")
+		s.adminErr(w, r, "name")
 		return
 	}
 	if err := s.Host.Meta.CreateTeam(r.Context(), s.newTeamID(), name); err != nil {
-		s.adminErr(w, r, err.Error())
+		s.adminErr(w, r, "bad_form")
 		return
 	}
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
@@ -184,10 +211,10 @@ func (s *Server) adminDeleteTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.Host.Meta.DeleteTeam(r.Context(), domain.TeamID(r.PathValue("id"))); err != nil {
 		if err == domain.ErrInvalid {
-			s.adminErr(w, r, "team still used by sites")
+			s.adminErr(w, r, "team_sites")
 			return
 		}
-		s.adminErr(w, r, err.Error())
+		s.adminErr(w, r, "bad_form")
 		return
 	}
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
@@ -198,20 +225,20 @@ func (s *Server) adminAddMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		s.adminErr(w, r, "bad form")
+		s.adminErr(w, r, "bad_form")
 		return
 	}
 	uid := domain.UserID(r.FormValue("user_id"))
 	if uid == "" {
-		s.adminErr(w, r, "user required")
+		s.adminErr(w, r, "user_required")
 		return
 	}
 	if _, err := s.Host.Meta.User(r.Context(), uid); err != nil {
-		s.adminErr(w, r, err.Error())
+		s.adminErr(w, r, "bad_form")
 		return
 	}
 	if err := s.Host.Meta.AddMember(r.Context(), domain.TeamID(r.PathValue("id")), uid); err != nil {
-		s.adminErr(w, r, err.Error())
+		s.adminErr(w, r, "bad_form")
 		return
 	}
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
@@ -222,7 +249,7 @@ func (s *Server) adminRemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.Host.Meta.RemoveMember(r.Context(), domain.TeamID(r.PathValue("id")), domain.UserID(r.PathValue("uid"))); err != nil {
-		s.adminErr(w, r, err.Error())
+		s.adminErr(w, r, "bad_form")
 		return
 	}
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
@@ -232,8 +259,8 @@ func (s *Server) adminDeleteSite(w http.ResponseWriter, r *http.Request) {
 	if !s.requireAdmin(w, r) {
 		return
 	}
-	if err := s.Host.Meta.DeleteSite(r.Context(), domain.SiteID(r.PathValue("id"))); err != nil {
-		s.adminErr(w, r, err.Error())
+	if err := s.Host.DeleteSite(r.Context(), domain.SiteID(r.PathValue("id"))); err != nil {
+		s.adminErr(w, r, "bad_form")
 		return
 	}
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
@@ -265,23 +292,23 @@ func (s *Server) loadDash(r *http.Request) (dashData, error) {
 }
 
 func (s *Server) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
-	if s.cookieAdminOK(r) || s.adminOK(r) {
+	if s.sessionOK(r) || s.adminOK(r) {
 		return true
 	}
 	http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
 	return false
 }
 
-func (s *Server) adminErr(w http.ResponseWriter, r *http.Request, msg string) {
-	http.Redirect(w, r, "/admin?err="+url.QueryEscape(msg), http.StatusSeeOther)
+func (s *Server) adminErr(w http.ResponseWriter, r *http.Request, code string) {
+	http.Redirect(w, r, "/admin?err="+code, http.StatusSeeOther)
 }
 
-func (s *Server) cookieAdminOK(r *http.Request) bool {
-	c, err := r.Cookie(cookieAdmin)
+func (s *Server) sessionOK(r *http.Request) bool {
+	c, err := r.Cookie(cookieSession)
 	if err != nil {
 		return false
 	}
-	return s.adminEq(c.Value)
+	return s.sessions.valid(c.Value)
 }
 
 func (s *Server) adminEq(got string) bool {
@@ -291,21 +318,9 @@ func (s *Server) adminEq(got string) bool {
 	return subtle.ConstantTimeCompare([]byte(got), []byte(s.Admin)) == 1
 }
 
-func (s *Server) adminCookie(r *http.Request, val string, maxAge int) *http.Cookie {
+func (s *Server) sessionCookie(r *http.Request, val string, maxAge int) *http.Cookie {
 	return &http.Cookie{
-		Name:     cookieAdmin,
-		Value:    val,
-		Path:     "/admin",
-		MaxAge:   maxAge,
-		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
-		Secure:   forwardedHTTPS(r),
-	}
-}
-
-func (s *Server) flashCookie(r *http.Request, val string, maxAge int) *http.Cookie {
-	return &http.Cookie{
-		Name:     cookieFlash,
+		Name:     cookieSession,
 		Value:    val,
 		Path:     "/admin",
 		MaxAge:   maxAge,
@@ -321,4 +336,3 @@ func forwardedHTTPS(r *http.Request) bool {
 	}
 	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
-

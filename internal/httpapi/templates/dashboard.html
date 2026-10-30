@@ -34,15 +34,6 @@
 </header>
 <main>
   {{if .Err}}<p class="err">{{.Err}}</p>{{end}}
-  {{if .FlashToken}}
-  <div class="flash">
-    <p>New token for <strong>{{.FlashName}}</strong>. Shown once.</p>
-    <div class="row">
-      <input id="tok" class="mono" readonly value="{{.FlashToken}}">
-      <button type="button" onclick="navigator.clipboard.writeText(document.getElementById('tok').value)">Copy</button>
-    </div>
-  </div>
-  {{end}}
 
   <section>
     <h2>Users</h2>
