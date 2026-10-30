@@ -85,19 +85,21 @@ PY
   scp -o BatchMode=yes "$TMP/ah.env" "$HOST:$REMOTE/.env"
   ssh -o BatchMode=yes "$HOST" "chmod 600 $REMOTE/.env"
   echo "    wrote $REMOTE/.env"
+  keep=$NEW_KEY_ID
+  NEW_KEY_ID=""
   for k in $(aws iam list-access-keys --user-name "$USER_NAME" --query 'AccessKeyMetadata[].AccessKeyId' --output text); do
-    if [[ "$k" != "$NEW_KEY_ID" ]]; then
-      aws iam delete-access-key --user-name "$USER_NAME" --access-key-id "$k"
+    if [[ "$k" != "$keep" ]]; then
+      aws iam delete-access-key --user-name "$USER_NAME" --access-key-id "$k" || echo "warn: could not delete access key $k" >&2
     fi
   done
-  NEW_KEY_ID=""
 else
   echo "    skipped key create"
 fi
 
 echo "4/5 install on host"
+SHA=$(git -C "$HERE/.." rev-parse HEAD)
 scp -o BatchMode=yes "$HERE/install-proxy-a.sh" "$HOST:/tmp/ah-install.sh"
-ssh -o BatchMode=yes "$HOST" "bash /tmp/ah-install.sh"
+ssh -o BatchMode=yes "$HOST" "INSTALL_SHA=$SHA bash /tmp/ah-install.sh"
 
 echo "5/5 check"
 curl -sfS https://artifacts.noomz.space/healthz

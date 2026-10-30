@@ -12,7 +12,7 @@ Go 1.23. Needs SQLite on disk and an S3 bucket. MinIO (image `quay.io/minio/mini
 docker compose up -d
 aws --endpoint-url http://localhost:9000 s3 mb s3://artifacts
 export AWS_ACCESS_KEY_ID=minio AWS_SECRET_ACCESS_KEY=miniopass AWS_REGION=us-east-1
-export ARTIFACT_HOST_ADMIN_TOKEN=change-me
+export ARTIFACT_HOST_ADMIN_TOKEN=$(openssl rand -hex 32)
 export ARTIFACT_HOST_S3_BUCKET=artifacts
 export ARTIFACT_HOST_S3_ENDPOINT=http://localhost:9000
 go run ./cmd/ah serve --listen :8080 --base-url http://localhost:8080

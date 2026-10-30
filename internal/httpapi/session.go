@@ -83,18 +83,15 @@ func newLoginLimit() *loginLimit {
 	return &loginLimit{fail: make(map[string][]time.Time)}
 }
 
-func (l *loginLimit) allow(ip string) bool {
+func (l *loginLimit) begin(ip string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	keep := l.prune(ip)
-	return len(keep) < loginMaxFail
-}
-
-func (l *loginLimit) record(ip string) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	keep := l.prune(ip)
+	if len(keep) >= loginMaxFail {
+		return false
+	}
 	l.fail[ip] = append(keep, time.Now())
+	return true
 }
 
 func (l *loginLimit) clear(ip string) {

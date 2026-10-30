@@ -79,7 +79,7 @@ func (s *Server) adminLoginGET(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) adminLoginPOST(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r)
-	if !s.logins.allow(ip) {
+	if !s.logins.begin(ip) {
 		http.Redirect(w, r, "/admin/login?err=rate", http.StatusSeeOther)
 		return
 	}
@@ -89,7 +89,6 @@ func (s *Server) adminLoginPOST(w http.ResponseWriter, r *http.Request) {
 	}
 	tok := strings.TrimSpace(r.FormValue("token"))
 	if !s.adminEq(tok) {
-		s.logins.record(ip)
 		http.Redirect(w, r, "/admin/login?err=bad_token", http.StatusSeeOther)
 		return
 	}

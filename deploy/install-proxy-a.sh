@@ -13,13 +13,19 @@ sudo mkdir -p "$ROOT/data"
 sudo chown ubuntu:ubuntu "$ROOT"
 sudo chown 65532:65532 "$ROOT/data"
 
+if [[ -z "${INSTALL_SHA:-}" ]]; then
+  echo "INSTALL_SHA is required (reviewed commit)" >&2
+  exit 2
+fi
 if [[ ! -d "$ROOT/src/.git" ]]; then
   git clone "$REPO" "$ROOT/src"
-else
-  git -C "$ROOT/src" fetch origin
-  git -C "$ROOT/src" checkout main
-  git -C "$ROOT/src" pull --ff-only origin main
 fi
+git -C "$ROOT/src" fetch origin
+if ! git -C "$ROOT/src" cat-file -e "${INSTALL_SHA}^{commit}"; then
+  echo "INSTALL_SHA $INSTALL_SHA not in $REPO" >&2
+  exit 2
+fi
+git -C "$ROOT/src" checkout --detach "$INSTALL_SHA"
 
 if [[ ! -f "$ROOT/.env" ]]; then
   token=$(python3 -c 'import secrets; print(secrets.token_hex(32))')

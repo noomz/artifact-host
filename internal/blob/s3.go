@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 
@@ -102,12 +103,16 @@ func (s *S3) DeletePrefix(ctx context.Context, prefix string) error {
 			for _, o := range out.Contents {
 				objs = append(objs, types.ObjectIdentifier{Key: o.Key})
 			}
-			_, err = s.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+			del, err := s.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
 				Bucket: aws.String(s.bucket),
 				Delete: &types.Delete{Objects: objs, Quiet: aws.Bool(true)},
 			})
 			if err != nil {
 				return err
+			}
+			if len(del.Errors) > 0 {
+				e := del.Errors[0]
+				return fmt.Errorf("s3 delete %s: %s", aws.ToString(e.Key), aws.ToString(e.Message))
 			}
 		}
 		if !aws.ToBool(out.IsTruncated) {
