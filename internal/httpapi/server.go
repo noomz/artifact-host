@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/noomz/artifact-host/internal/domain"
@@ -50,6 +51,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/teams", s.createTeam)
 	mux.HandleFunc("POST /v1/teams/{id}/members", s.addMember)
 	mux.HandleFunc("POST /v1/sites", s.publish)
+	mux.HandleFunc("GET /v1/sites", s.listSites)
+	mux.HandleFunc("PATCH /v1/sites/{id}", s.renameSite)
 	mux.HandleFunc("GET /s/{id}", s.serve)
 	mux.HandleFunc("GET /s/{id}/{path...}", s.serve)
 	s.mountAdmin(mux)
@@ -137,7 +140,21 @@ func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	var name *string
+	if values, ok := r.Header[http.CanonicalHeaderKey("Site-Name")]; ok {
+		if len(values) != 1 {
+			writeErr(w, domain.ErrInvalid)
+			return
+		}
+		decoded, err := url.QueryUnescape(values[0])
+		if err != nil {
+			writeErr(w, domain.ErrInvalid)
+			return
+		}
+		name = &decoded
+	}
 	out, err := s.Host.Publish(r.Context(), actor, sites.PublishIn{
+		Name:       name,
 		Site:       domain.SiteID(headerOr(r, "Site-Id", "X-Site-Id", "")),
 		Visibility: vis,
 		Team:       domain.TeamID(headerOr(r, "Team-Id", "X-Team-Id", "")),
@@ -152,6 +169,106 @@ func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
 		"version": string(out.Version),
 		"url":     s.BaseURL + "/s/" + string(out.Site) + "/",
 	})
+}
+
+type siteResult struct {
+	ID         domain.SiteID     `json:"id"`
+	Name       string            `json:"name"`
+	Owner      domain.UserID     `json:"owner_id"`
+	Team       domain.TeamID     `json:"team_id,omitempty"`
+	Visibility domain.Visibility `json:"visibility"`
+	Version    domain.VersionID  `json:"version"`
+	URL        string            `json:"url"`
+}
+
+func (s *Server) listSites(w http.ResponseWriter, r *http.Request) {
+	actor, err := s.principal(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if actor.User == "" {
+		writeErr(w, domain.ErrUnauthorized)
+		return
+	}
+	q := r.URL.Query()
+	scope := q.Get("scope")
+	if scope != "" && scope != "owned" && scope != "team" && scope != "all" {
+		writeErr(w, domain.ErrInvalid)
+		return
+	}
+	visibility := domain.Visibility(q.Get("visibility"))
+	if visibility != "" {
+		if _, err := domain.ParseVisibility(string(visibility)); err != nil {
+			writeErr(w, err)
+			return
+		}
+	}
+	all, err := s.Host.Meta.ListAccessibleSites(r.Context(), actor.User)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	out := []siteResult{}
+	needle := q.Get("name")
+	for _, site := range all {
+		owned := site.Owner == actor.User
+		team := site.Visibility == domain.VisTeam && domain.InTeam(actor.Teams, site.Team)
+		if (scope == "owned" && !owned) || (scope == "team" && !team) || (visibility != "" && site.Visibility != visibility) || !containsFold(site.Name, needle) {
+			continue
+		}
+		out = append(out, siteResult{site.ID, site.Name, site.Owner, site.Team, site.Visibility, site.Current, s.BaseURL + "/s/" + string(site.ID) + "/"})
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, out)
+}
+
+func containsFold(name, query string) bool {
+	n, q := []rune(name), []rune(query)
+	if len(q) == 0 {
+		return true
+	}
+	for i := 0; i+len(q) <= len(n); i++ {
+		if strings.EqualFold(string(n[i:i+len(q)]), query) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) renameSite(w http.ResponseWriter, r *http.Request) {
+	actor, err := s.principal(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if actor.User == "" {
+		writeErr(w, domain.ErrUnauthorized)
+		return
+	}
+	var body struct {
+		Name *string `json:"name"`
+	}
+	dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
+	if err := dec.Decode(&body); err != nil || body.Name == nil {
+		writeErr(w, domain.ErrInvalid)
+		return
+	}
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		writeErr(w, domain.ErrInvalid)
+		return
+	}
+	name, err := domain.NormalizeName(*body.Name)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := s.Host.Meta.RenameSite(r.Context(), domain.SiteID(r.PathValue("id")), actor.User, name); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {

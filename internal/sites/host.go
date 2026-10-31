@@ -25,6 +25,7 @@ func New(m *meta.DB, b blob.Store) *Host {
 }
 
 type PublishIn struct {
+	Name       *string
 	Site       domain.SiteID
 	Visibility domain.Visibility
 	Team       domain.TeamID
@@ -37,6 +38,13 @@ type PublishOut struct {
 }
 
 func (h *Host) Publish(ctx context.Context, actor domain.Principal, in PublishIn) (PublishOut, error) {
+	if in.Name != nil {
+		name, err := domain.NormalizeName(*in.Name)
+		if err != nil {
+			return PublishOut{}, err
+		}
+		in.Name = &name
+	}
 	files, err := NormalizeFiles(in.Files)
 	if err != nil {
 		return PublishOut{}, err
@@ -52,6 +60,9 @@ func (h *Host) Publish(ctx context.Context, actor domain.Principal, in PublishIn
 			return PublishOut{}, err
 		}
 		existing = &s
+	}
+	if existing != nil && in.Name != nil && actor.User != existing.Owner {
+		return PublishOut{}, domain.ErrForbidden
 	}
 	if !domain.CanWrite(actor, existing) {
 		if actor.User == "" && !actor.Admin {
@@ -90,7 +101,7 @@ func (h *Host) Publish(ctx context.Context, actor domain.Principal, in PublishIn
 			return PublishOut{}, err
 		}
 	}
-	if err := h.Meta.SetCurrent(ctx, siteID, ver, in.Visibility, in.Team); err != nil {
+	if err := h.Meta.SetCurrent(ctx, siteID, ver, in.Visibility, in.Team, in.Name); err != nil {
 		return PublishOut{}, err
 	}
 	return PublishOut{Site: siteID, Version: ver}, nil

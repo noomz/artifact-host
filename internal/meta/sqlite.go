@@ -63,6 +63,16 @@ CREATE TABLE IF NOT EXISTS versions (
   site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE
 );
 `)
+	if err != nil {
+		return err
+	}
+	var count int
+	if err := m.sql.QueryRow(`SELECT count(*) FROM pragma_table_info('sites') WHERE name = 'name'`).Scan(&count); err != nil {
+		return err
+	}
+	if count == 0 {
+		_, err = m.sql.Exec(`ALTER TABLE sites ADD COLUMN name TEXT NOT NULL DEFAULT ''`)
+	}
 	return err
 }
 
@@ -121,8 +131,8 @@ func (m *DB) InsertSite(ctx context.Context, s domain.Site) error {
 	if s.Team != "" {
 		team = string(s.Team)
 	}
-	_, err := m.sql.ExecContext(ctx, `INSERT INTO sites (id, owner_id, team_id, visibility, current_version) VALUES (?, ?, ?, ?, ?)`,
-		s.ID, s.Owner, team, s.Visibility, nullVersion(s.Current))
+	_, err := m.sql.ExecContext(ctx, `INSERT INTO sites (id, owner_id, team_id, visibility, current_version, name) VALUES (?, ?, ?, ?, ?, ?)`,
+		s.ID, s.Owner, team, s.Visibility, nullVersion(s.Current), s.Name)
 	return err
 }
 
@@ -130,8 +140,8 @@ func (m *DB) Site(ctx context.Context, id domain.SiteID) (domain.Site, error) {
 	var s domain.Site
 	var team sql.NullString
 	var cur sql.NullString
-	err := m.sql.QueryRowContext(ctx, `SELECT id, owner_id, team_id, visibility, current_version FROM sites WHERE id = ?`, id).
-		Scan(&s.ID, &s.Owner, &team, &s.Visibility, &cur)
+	err := m.sql.QueryRowContext(ctx, `SELECT id, owner_id, team_id, visibility, current_version, name FROM sites WHERE id = ?`, id).
+		Scan(&s.ID, &s.Owner, &team, &s.Visibility, &cur, &s.Name)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Site{}, domain.ErrNotFound
 	}
@@ -152,12 +162,12 @@ func (m *DB) InsertVersion(ctx context.Context, site domain.SiteID, ver domain.V
 	return err
 }
 
-func (m *DB) SetCurrent(ctx context.Context, site domain.SiteID, ver domain.VersionID, vis domain.Visibility, team domain.TeamID) error {
+func (m *DB) SetCurrent(ctx context.Context, site domain.SiteID, ver domain.VersionID, vis domain.Visibility, team domain.TeamID, name *string) error {
 	var t any
 	if team != "" {
 		t = string(team)
 	}
-	res, err := m.sql.ExecContext(ctx, `UPDATE sites SET current_version = ?, visibility = ?, team_id = ? WHERE id = ?`, ver, vis, t, site)
+	res, err := m.sql.ExecContext(ctx, `UPDATE sites SET current_version = ?, visibility = ?, team_id = ?, name = COALESCE(?, name) WHERE id = ?`, ver, vis, t, name, site)
 	if err != nil {
 		return err
 	}
@@ -315,7 +325,7 @@ func (m *DB) DeleteTeam(ctx context.Context, id domain.TeamID) error {
 }
 
 func (m *DB) ListSites(ctx context.Context) ([]domain.Site, error) {
-	rows, err := m.sql.QueryContext(ctx, `SELECT id, owner_id, team_id, visibility, current_version FROM sites ORDER BY id`)
+	rows, err := m.sql.QueryContext(ctx, `SELECT id, owner_id, team_id, visibility, current_version, name FROM sites ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -324,7 +334,7 @@ func (m *DB) ListSites(ctx context.Context) ([]domain.Site, error) {
 	for rows.Next() {
 		var s domain.Site
 		var team, cur sql.NullString
-		if err := rows.Scan(&s.ID, &s.Owner, &team, &s.Visibility, &cur); err != nil {
+		if err := rows.Scan(&s.ID, &s.Owner, &team, &s.Visibility, &cur, &s.Name); err != nil {
 			return nil, err
 		}
 		if team.Valid {
@@ -336,6 +346,41 @@ func (m *DB) ListSites(ctx context.Context) ([]domain.Site, error) {
 		out = append(out, s)
 	}
 	return out, rows.Err()
+}
+
+func (m *DB) ListAccessibleSites(ctx context.Context, user domain.UserID) ([]domain.Site, error) {
+	rows, err := m.sql.QueryContext(ctx, `SELECT id, name, owner_id, visibility, COALESCE(team_id, ''), COALESCE(current_version, '') FROM sites WHERE current_version IS NOT NULL AND (owner_id = ? OR (visibility = 'team' AND team_id IN (SELECT team_id FROM team_members WHERE user_id = ?))) ORDER BY name, id`, user, user)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []domain.Site{}
+	for rows.Next() {
+		var site domain.Site
+		if err := rows.Scan(&site.ID, &site.Name, &site.Owner, &site.Visibility, &site.Team, &site.Current); err != nil {
+			return nil, err
+		}
+		out = append(out, site)
+	}
+	return out, rows.Err()
+}
+
+func (m *DB) RenameSite(ctx context.Context, id domain.SiteID, owner domain.UserID, name string) error {
+	res, err := m.sql.ExecContext(ctx, `UPDATE sites SET name = ? WHERE id = ? AND owner_id = ?`, name, id, owner)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		if _, err := m.Site(ctx, id); err != nil {
+			return err
+		}
+		return domain.ErrForbidden
+	}
+	return nil
 }
 
 func (m *DB) DeleteSite(ctx context.Context, id domain.SiteID) error {

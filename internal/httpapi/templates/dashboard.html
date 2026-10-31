@@ -101,10 +101,11 @@
   <section>
     <h2>Sites</h2>
     <table>
-      <thead><tr><th>ID</th><th>Visibility</th><th>Owner</th><th>Team</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>ID</th><th>Visibility</th><th>Owner</th><th>Team</th><th></th></tr></thead>
       <tbody>
       {{range .Sites}}
         <tr>
+          <td>{{.Name}}</td>
           <td class="mono"><a href="{{$.Base}}/s/{{.ID}}/">{{.ID}}</a></td>
           <td>{{.Visibility}}</td>
           <td class="mono">{{.Owner}}</td>
@@ -114,7 +115,7 @@
           </td>
         </tr>
       {{else}}
-        <tr><td colspan="5" class="muted">No sites</td></tr>
+        <tr><td colspan="6" class="muted">No sites</td></tr>
       {{end}}
       </tbody>
     </table>

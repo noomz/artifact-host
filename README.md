@@ -22,10 +22,14 @@ go run ./cmd/ah serve --listen :8080 --base-url http://localhost:8080
 export ARTIFACT_HOST_URL=http://localhost:8080
 ah user add ada          # prints id + token; save the token
 export ARTIFACT_HOST_TOKEN=...
-ah publish --visibility public ./testdata/hello
+ah publish --name "Hello" --visibility public ./testdata/hello
+ah list --scope owned --name hello
+ah rename SITE_ID "New name"
 ```
 
-`GET` the returned `url`. Owner and team sites need `Authorization: Bearer <token>` on read.
+`GET` the returned `url`. Owner and team sites need `Authorization: Bearer <token>` on read. Names are optional, need not be unique, and do not change URLs. Names are trimmed and limited to 200 Unicode characters. Use `ah rename SITE_ID ""` to clear one. Republish with `--site SITE_ID` and omit `--name` to preserve its name.
+
+`ah list` returns your sites and team-visible sites shared with your teams. Filter by `--name` (case-insensitive substring), `--visibility public|owner|team`, or `--scope all|owned|team`. Team scope includes your own team-visible sites when you are a member of that team. Results are JSON.
 
 Admin UI is `/admin` (login with the admin token). Sessions are random ids, not the admin token. Create users, rotate tokens, teams, delete sites. New tokens are shown once on the POST response. Published pages get `Content-Security-Policy: sandbox` so they cannot use the admin cookie. A separate user-content origin is still the long-term isolation.
 
@@ -36,7 +40,9 @@ Admin UI is `/admin` (login with the admin token). Sessions are random ids, not 
 | `POST` | `/v1/users` | admin token, JSON `{"name"}` |
 | `POST` | `/v1/teams` | admin |
 | `POST` | `/v1/teams/{id}/members` | admin, JSON `{"user_id"}` |
-| `POST` | `/v1/sites` | user token, tar body, headers `Visibility`, optional `Site-Id`, `Team-Id` |
+| `POST` | `/v1/sites` | user token, tar body, headers `Visibility`, optional `Site-Id`, `Team-Id`, `Site-Name` (URL query-encoded UTF-8) |
+| `GET` | `/v1/sites` | user token; optional query `name`, `visibility`, `scope` (`all`, `owned`, `team`) |
+| `PATCH` | `/v1/sites/{id}` | owner user token, JSON `{"name":"New name"}`; empty name clears |
 | `GET` | `/s/{id}/...` | ACL on the site |
 
 Production on proxy-a is `https://artifacts.noomz.space`. Install: `deploy/install-proxy-a.sh` (nginx like `stm.noomz.space`, bucket `noomz-artifact-host` in `ap-southeast-1`). Put AWS keys in `/opt/artifact-host/.env` on the host.

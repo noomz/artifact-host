@@ -1,6 +1,10 @@
 package domain
 
-import "errors"
+import (
+	"errors"
+	"strings"
+	"unicode/utf8"
+)
 
 type UserID string
 type TeamID string
@@ -16,6 +20,7 @@ const (
 )
 
 type Site struct {
+	Name       string
 	ID         SiteID
 	Owner      UserID
 	Team       TeamID
@@ -51,6 +56,17 @@ var (
 	ErrNotFound     = errors.New("not found")
 	ErrInvalid      = errors.New("invalid")
 )
+
+func NormalizeName(name string) (string, error) {
+	if !utf8.ValidString(name) {
+		return "", ErrInvalid
+	}
+	name = strings.TrimSpace(name)
+	if utf8.RuneCountInString(name) > 200 {
+		return "", ErrInvalid
+	}
+	return name, nil
+}
 
 func ParseVisibility(s string) (Visibility, error) {
 	switch Visibility(s) {

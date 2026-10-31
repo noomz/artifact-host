@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,7 +22,7 @@ import (
 
 func Main(args []string) int {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "usage: ah serve|publish|user|team")
+		fmt.Fprintln(os.Stderr, "usage: ah serve|publish|list|rename|user|team")
 		return 2
 	}
 	switch args[0] {
@@ -29,6 +30,10 @@ func Main(args []string) int {
 		return cmdServe(args[1:])
 	case "publish":
 		return cmdPublish(args[1:])
+	case "list":
+		return cmdList(args[1:])
+	case "rename":
+		return cmdRename(args[1:])
 	case "user":
 		return cmdUser(args[1:])
 	case "team":
@@ -94,7 +99,8 @@ func cmdPublish(args []string) int {
 	vis := fs.String("visibility", "public", "public|owner|team")
 	team := fs.String("team", "", "team id when visibility=team")
 	site := fs.String("site", "", "existing site id to replace")
-	url := fs.String("url", os.Getenv("ARTIFACT_HOST_URL"), "server URL")
+	name := fs.String("name", "", "artifact display name")
+	base := fs.String("url", os.Getenv("ARTIFACT_HOST_URL"), "server URL")
 	token := fs.String("token", os.Getenv("ARTIFACT_HOST_TOKEN"), "user token")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -102,7 +108,7 @@ func cmdPublish(args []string) int {
 	if *dir == "" && fs.NArg() >= 1 {
 		*dir = fs.Arg(0)
 	}
-	if *dir == "" || *url == "" || *token == "" {
+	if *dir == "" || *base == "" || *token == "" {
 		fmt.Fprintln(os.Stderr, "publish needs a directory, --url or ARTIFACT_HOST_URL, and --token or ARTIFACT_HOST_TOKEN")
 		return 2
 	}
@@ -111,19 +117,74 @@ func cmdPublish(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(*url, "/")+"/v1/sites", bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(*base, "/")+"/v1/sites", bytes.NewReader(body))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
 	req.Header.Set("Authorization", "Bearer "+*token)
 	req.Header.Set("Visibility", *vis)
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "name" {
+			req.Header["Site-Name"] = []string{url.QueryEscape(*name)}
+		}
+	})
 	if *team != "" {
 		req.Header.Set("Team-Id", *team)
 	}
 	if *site != "" {
 		req.Header.Set("Site-Id", *site)
 	}
+	return dump(req)
+}
+
+func cmdList(args []string) int {
+	fs := flag.NewFlagSet("list", flag.ContinueOnError)
+	name := fs.String("name", "", "name substring")
+	visibility := fs.String("visibility", "", "public|owner|team")
+	scope := fs.String("scope", "all", "all|owned|team")
+	base := fs.String("url", os.Getenv("ARTIFACT_HOST_URL"), "server URL")
+	token := fs.String("token", os.Getenv("ARTIFACT_HOST_TOKEN"), "user token")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *base == "" || *token == "" || fs.NArg() != 0 {
+		fmt.Fprintln(os.Stderr, "list needs URL and user token")
+		return 2
+	}
+	q := url.Values{"name": {*name}, "visibility": {*visibility}, "scope": {*scope}}
+	req, err := http.NewRequest(http.MethodGet, strings.TrimRight(*base, "/")+"/v1/sites?"+q.Encode(), nil)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	req.Header.Set("Authorization", "Bearer "+*token)
+	return dump(req)
+}
+
+func cmdRename(args []string) int {
+	fs := flag.NewFlagSet("rename", flag.ContinueOnError)
+	base := fs.String("url", os.Getenv("ARTIFACT_HOST_URL"), "server URL")
+	token := fs.String("token", os.Getenv("ARTIFACT_HOST_TOKEN"), "user token")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *base == "" || *token == "" || fs.NArg() != 2 {
+		fmt.Fprintln(os.Stderr, "usage: ah rename SITE_ID NEW_NAME (URL and user token required)")
+		return 2
+	}
+	body, err := json.Marshal(map[string]string{"name": fs.Arg(1)})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	req, err := http.NewRequest(http.MethodPatch, strings.TrimRight(*base, "/")+"/v1/sites/"+url.PathEscape(fs.Arg(0)), bytes.NewReader(body))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	req.Header.Set("Authorization", "Bearer "+*token)
+	req.Header.Set("Content-Type", "application/json")
 	return dump(req)
 }
 
