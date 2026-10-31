@@ -1,6 +1,6 @@
 ---
 name: artifact-host
-description: Publish a static HTML site to self-hosted artifact-host. Use when the user wants to share an agent-made page, dashboard, or HTML export as a public, owner-only, or team URL, or when Claude/Codex/Pi artifact sharing is too limited.
+description: Publish a static HTML site to self-hosted artifact-host. Use when the user wants to share an agent-made page, dashboard, HTML export, or OpenDesign project as a public, owner-only, or team URL.
 ---
 
 # Publish to artifact-host
@@ -11,7 +11,7 @@ The user has a URL. `GET` on that URL returns the page (public) or 401 without a
 
 ## Steps
 
-1. Need `ARTIFACT_HOST_URL` and `ARTIFACT_HOST_TOKEN`. If missing, stop and ask. Do not invent a host.
+1. Need `ARTIFACT_HOST_URL` and `ARTIFACT_HOST_TOKEN`. If missing, stop and ask. Do not invent a host. For an OpenDesign project, follow [OpenDesign handoff](references/open-design.md) instead of steps 2–4 below, then give the user the result.
 2. Put the site in one directory with `index.html` at the top. No backend. Relative asset paths only.
 3. If the session has no HTML yet, write a single-file `index.html` (inline CSS/JS). Do not wait on Claude Design, Codex Sites, or a vendor artifact tool.
 4. Publish:
