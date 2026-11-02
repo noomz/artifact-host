@@ -53,7 +53,7 @@ Hostnames stay same-site as `/admin` because all share `noomz.space`. `SameSite`
 | id | status | task | cites |
 |---|---|---|---|
 | T1 | x | Fix republish visibility reset, with regression test; ship alone first, live bug today | V15 |
-| T2 | . | Add admin CSRF tokens, `Origin` check, `__Host-` cookie | V6 |
+| T2 | x | Add admin CSRF tokens, `Origin` check, `__Host-` cookie | V6 |
 | T3 | . | `?` Choose DNS provider and token handling for DNS-01; set wildcard DNS and cert | I.deploy |
 | T4 | . | Add schema migration and domain types for password, links, sessions | V3,V8,V16 |
 | T5 | . | Add host routing and content handler; prove isolation from admin and API | V5,V12,V16,I.host |

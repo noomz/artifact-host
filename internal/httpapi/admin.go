@@ -40,6 +40,7 @@ type dashData struct {
 	Sites []domain.Site
 	Base  string
 	Err   string
+	CSRF  string
 }
 
 func adminErrMsg(code string) string {
@@ -47,18 +48,21 @@ func adminErrMsg(code string) string {
 }
 
 func (s *Server) mountAdmin(mux *http.ServeMux) {
+	post := func(path string, h http.HandlerFunc) {
+		mux.HandleFunc("POST "+path, s.csrfProtect(h))
+	}
 	mux.HandleFunc("GET /admin/login", s.adminLoginGET)
-	mux.HandleFunc("POST /admin/login", s.adminLoginPOST)
-	mux.HandleFunc("POST /admin/logout", s.adminLogout)
 	mux.HandleFunc("GET /admin", s.adminHome)
-	mux.HandleFunc("POST /admin/users", s.adminCreateUser)
-	mux.HandleFunc("POST /admin/users/{id}/rotate", s.adminRotateUser)
-	mux.HandleFunc("POST /admin/users/{id}/delete", s.adminDeleteUser)
-	mux.HandleFunc("POST /admin/teams", s.adminCreateTeam)
-	mux.HandleFunc("POST /admin/teams/{id}/delete", s.adminDeleteTeam)
-	mux.HandleFunc("POST /admin/teams/{id}/members", s.adminAddMember)
-	mux.HandleFunc("POST /admin/teams/{id}/members/{uid}/delete", s.adminRemoveMember)
-	mux.HandleFunc("POST /admin/sites/{id}/delete", s.adminDeleteSite)
+	post("/admin/login", s.adminLoginPOST)
+	post("/admin/logout", s.adminLogout)
+	post("/admin/users", s.adminCreateUser)
+	post("/admin/users/{id}/rotate", s.adminRotateUser)
+	post("/admin/users/{id}/delete", s.adminDeleteUser)
+	post("/admin/teams", s.adminCreateTeam)
+	post("/admin/teams/{id}/delete", s.adminDeleteTeam)
+	post("/admin/teams/{id}/members", s.adminAddMember)
+	post("/admin/teams/{id}/members/{uid}/delete", s.adminRemoveMember)
+	post("/admin/sites/{id}/delete", s.adminDeleteSite)
 }
 
 func adminHeaders(w http.ResponseWriter) {
@@ -73,8 +77,13 @@ func (s *Server) adminLoginGET(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 		return
 	}
+	csrf, err := ensureCSRF(w, r)
+	if err != nil {
+		http.Error(w, "session", http.StatusInternalServerError)
+		return
+	}
 	adminHeaders(w)
-	_ = tplLogin.Execute(w, map[string]string{"Err": adminErrMsg(r.URL.Query().Get("err"))})
+	_ = tplLogin.Execute(w, map[string]string{"Err": adminErrMsg(r.URL.Query().Get("err")), "CSRF": csrf})
 }
 
 func (s *Server) adminLoginPOST(w http.ResponseWriter, r *http.Request) {
@@ -103,7 +112,7 @@ func (s *Server) adminLoginPOST(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) adminLogout(w http.ResponseWriter, r *http.Request) {
-	if c, err := r.Cookie(cookieSession); err == nil {
+	if c, err := r.Cookie(adminCookieName(r, cookieSession)); err == nil {
 		s.sessions.revoke(c.Value)
 	}
 	http.SetCookie(w, s.sessionCookie(r, "", -1))
@@ -120,6 +129,11 @@ func (s *Server) adminHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.Err = adminErrMsg(r.URL.Query().Get("err"))
+	data.CSRF, err = ensureCSRF(w, r)
+	if err != nil {
+		http.Error(w, "session", http.StatusInternalServerError)
+		return
+	}
 	adminHeaders(w)
 	_ = tplDashboard.Execute(w, data)
 }
@@ -303,7 +317,7 @@ func (s *Server) adminErr(w http.ResponseWriter, r *http.Request, code string) {
 }
 
 func (s *Server) sessionOK(r *http.Request) bool {
-	c, err := r.Cookie(cookieSession)
+	c, err := r.Cookie(adminCookieName(r, cookieSession))
 	if err != nil {
 		return false
 	}
@@ -319,9 +333,9 @@ func (s *Server) adminEq(got string) bool {
 
 func (s *Server) sessionCookie(r *http.Request, val string, maxAge int) *http.Cookie {
 	return &http.Cookie{
-		Name:     cookieSession,
+		Name:     adminCookieName(r, cookieSession),
 		Value:    val,
-		Path:     "/admin",
+		Path:     "/",
 		MaxAge:   maxAge,
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,

@@ -17,7 +17,7 @@
   <h1>artifact-host</h1>
   <p>Admin token. Same value as <code>ARTIFACT_HOST_ADMIN_TOKEN</code>.</p>
   {{if .Err}}<p class="err">{{.Err}}</p>{{end}}
-  <form method="post" action="/admin/login">
+  <form method="post" action="/admin/login"><input type="hidden" name="csrf" value="{{$.CSRF}}">
     <label for="token">Token</label>
     <input id="token" name="token" type="password" autocomplete="current-password" required>
     <button type="submit">Sign in</button>

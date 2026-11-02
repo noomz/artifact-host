@@ -30,14 +30,14 @@
 </style>
 <header>
   <h1>artifact-host</h1>
-  <form method="post" action="/admin/logout"><button type="submit">Sign out</button></form>
+  <form method="post" action="/admin/logout"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit">Sign out</button></form>
 </header>
 <main>
   {{if .Err}}<p class="err">{{.Err}}</p>{{end}}
 
   <section>
     <h2>Users</h2>
-    <form class="row" method="post" action="/admin/users">
+    <form class="row" method="post" action="/admin/users"><input type="hidden" name="csrf" value="{{$.CSRF}}">
       <input name="name" type="text" placeholder="name" required>
       <button class="primary" type="submit">Create user</button>
     </form>
@@ -49,8 +49,8 @@
           <td>{{.Name}}</td>
           <td class="mono">{{.ID}}</td>
           <td>
-            <form class="inline" method="post" action="/admin/users/{{.ID}}/rotate"><button type="submit">Rotate token</button></form>
-            <form class="inline" method="post" action="/admin/users/{{.ID}}/delete" onsubmit="return confirm('Delete user {{.Name}}?')"><button class="danger" type="submit">Delete</button></form>
+            <form class="inline" method="post" action="/admin/users/{{.ID}}/rotate"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit">Rotate token</button></form>
+            <form class="inline" method="post" action="/admin/users/{{.ID}}/delete" onsubmit="return confirm('Delete user {{.Name}}?')"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="danger" type="submit">Delete</button></form>
           </td>
         </tr>
       {{else}}
@@ -62,16 +62,16 @@
 
   <section>
     <h2>Teams</h2>
-    <form class="row" method="post" action="/admin/teams">
+    <form class="row" method="post" action="/admin/teams"><input type="hidden" name="csrf" value="{{$.CSRF}}">
       <input name="name" type="text" placeholder="team name" required>
       <button class="primary" type="submit">Create team</button>
     </form>
     {{range $t := .Teams}}
       <div class="row">
         <strong>{{$t.Team.Name}}</strong> <span class="mono muted">{{$t.Team.ID}}</span>
-        <form class="inline" method="post" action="/admin/teams/{{$t.Team.ID}}/delete" onsubmit="return confirm('Delete team {{$t.Team.Name}}?')"><button class="danger" type="submit">Delete team</button></form>
+        <form class="inline" method="post" action="/admin/teams/{{$t.Team.ID}}/delete" onsubmit="return confirm('Delete team {{$t.Team.Name}}?')"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="danger" type="submit">Delete team</button></form>
       </div>
-      <form class="row" method="post" action="/admin/teams/{{$t.Team.ID}}/members">
+      <form class="row" method="post" action="/admin/teams/{{$t.Team.ID}}/members"><input type="hidden" name="csrf" value="{{$.CSRF}}">
         <select name="user_id" required>
           <option value="">add member…</option>
           {{range $.Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
@@ -85,7 +85,7 @@
             <td>{{.Name}}</td>
             <td class="mono">{{.ID}}</td>
             <td>
-              <form class="inline" method="post" action="/admin/teams/{{$t.Team.ID}}/members/{{.ID}}/delete"><button class="danger" type="submit">Remove</button></form>
+              <form class="inline" method="post" action="/admin/teams/{{$t.Team.ID}}/members/{{.ID}}/delete"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="danger" type="submit">Remove</button></form>
             </td>
           </tr>
         {{else}}
@@ -111,7 +111,7 @@
           <td class="mono">{{.Owner}}</td>
           <td class="mono">{{.Team}}</td>
           <td>
-            <form class="inline" method="post" action="/admin/sites/{{.ID}}/delete" onsubmit="return confirm('Delete site?')"><button class="danger" type="submit">Delete</button></form>
+            <form class="inline" method="post" action="/admin/sites/{{.ID}}/delete" onsubmit="return confirm('Delete site?')"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="danger" type="submit">Delete</button></form>
           </td>
         </tr>
       {{else}}
