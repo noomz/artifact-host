@@ -11,7 +11,7 @@ Let an agent export a local OpenDesign artifact and publish it through artifact-
 - Reuse `ah publish`; do not duplicate its HTTP implementation or add OpenDesign-specific server routes.
 - Require the user's artifact-host token. Never expose tokens in exported files, URLs, or logs. Never use the admin token.
 - OpenDesign's `od` CLI must be identified explicitly; macOS `/usr/bin/od` is not OpenDesign.
-- Upstream CLI behavior is source-reviewed at revision `12d970eacc8971150e3c76470d2a9afe16dc2ed1`. Local OpenDesign 0.26.1 synthetic exports were published, updated, ACL-checked, and rendered in headless Chrome under artifact-host CSP. Real project compatibility varies.
+- Upstream CLI behavior is source-reviewed at revision `12d970eacc8971150e3c76470d2a9afe16dc2ed1`. Local OpenDesign 0.26.1 synthetic exports were published, updated, ACL-checked, and rendered in headless Chrome under artifact-host CSP. One real project export (2026-11-02, OpenDesign 0.26.1, a single self-contained HTML file with an inline script) passed the same checks against a local artifact-host. Exports with local assets, or with scripts that need same-origin APIs or cross-origin requests, are untested. Real project compatibility varies.
 
 ## §I
 
@@ -38,7 +38,7 @@ Let an agent export a local OpenDesign artifact and publish it through artifact-
 |---|---|---|---|
 | T1 | x | Verify local OpenDesign CLI version, export command, project selection, and representative HTML output | I.export,V1,V7,V8 |
 | T2 | x | Define and implement minimal agent handoff using existing publish skill and CLI | I.agent,I.export,I.publish,V1,V2,V3,V4,V5,V8 |
-| T3 | ~ | Test isolated export, failure handling, names, visibility, updates, and authenticated discovery; exercise real OpenDesign export when available | I.list,V2,V3,V4,V5,V6,V7,V8 |
+| T3 | x | Test isolated export, failure handling, names, visibility, updates, and authenticated discovery; exercise real OpenDesign export when available | I.list,V2,V3,V4,V5,V6,V7,V8 |
 | T4 | x | Document setup, supported output, privacy constraints, and limitations; run `go test ./...` | I.agent,V6,V7,V8,V9 |
 
 ## §B
@@ -46,3 +46,5 @@ Let an agent export a local OpenDesign artifact and publish it through artifact-
 | id | date | cause | fix |
 |---|---|---|---|
 | B1 | 2026-10-31 | System Node ABI differs from the installed Electron app's native SQLite module | Use and verify the app's matching Electron runtime; V8 |
+| B2 | 2026-11-02 | CLI default daemon port 7456 was held by an OrbStack container, not the desktop daemon on its dynamic port; export failed with `API_TOKEN_REQUIRED` and could otherwise reach the wrong instance | Handoff finds the daemon and passes `--daemon-url`; V1,V8 |
+| B3 | 2026-11-02 | `io.LimitReader` made an over-limit tar body end like EOF: a cut on an entry boundary returned 201 with entries dropped, other cuts returned bare `400 invalid` | `http.MaxBytesReader`, 413 with limit in message, regression test; V8 |

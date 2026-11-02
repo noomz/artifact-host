@@ -17,6 +17,8 @@ import (
 
 const maxBody = 32 << 20
 
+var errBodyTooLarge = errors.New("upload exceeds 32 MiB limit")
+
 type Server struct {
 	Host      *sites.Host
 	Admin     string
@@ -135,7 +137,7 @@ func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	files, err := readTarFiles(r)
+	files, err := readTarFiles(w, r)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -359,8 +361,8 @@ func headerOr(r *http.Request, a, b, def string) string {
 	return def
 }
 
-func readTarFiles(r *http.Request) ([]domain.File, error) {
-	tr := tar.NewReader(io.LimitReader(r.Body, maxBody))
+func readTarFiles(w http.ResponseWriter, r *http.Request) ([]domain.File, error) {
+	tr := tar.NewReader(http.MaxBytesReader(w, r.Body, maxBody))
 	var files []domain.File
 	for {
 		hdr, err := tr.Next()
@@ -368,21 +370,29 @@ func readTarFiles(r *http.Request) ([]domain.File, error) {
 			break
 		}
 		if err != nil {
-			return nil, domain.ErrInvalid
+			return nil, tarReadErr(err)
 		}
 		if hdr.Typeflag != tar.TypeReg {
 			continue
 		}
 		if hdr.Size > maxBody {
-			return nil, domain.ErrInvalid
+			return nil, errBodyTooLarge
 		}
 		body, err := io.ReadAll(tr)
 		if err != nil {
-			return nil, domain.ErrInvalid
+			return nil, tarReadErr(err)
 		}
 		files = append(files, domain.File{Path: hdr.Name, Body: body})
 	}
 	return files, nil
+}
+
+func tarReadErr(err error) error {
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		return errBodyTooLarge
+	}
+	return domain.ErrInvalid
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -402,6 +412,8 @@ func writeErr(w http.ResponseWriter, err error) {
 		code = http.StatusNotFound
 	case errors.Is(err, domain.ErrInvalid):
 		code = http.StatusBadRequest
+	case errors.Is(err, errBodyTooLarge):
+		code = http.StatusRequestEntityTooLarge
 	}
 	http.Error(w, err.Error(), code)
 }

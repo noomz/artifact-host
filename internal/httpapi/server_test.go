@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -48,6 +49,69 @@ func tarBody(t *testing.T, files map[string]string) *bytes.Buffer {
 		t.Fatal(err)
 	}
 	return &buf
+}
+
+func TestHTTPPublishRejectsOversizedBody(t *testing.T) {
+	const block = 512
+	tests := []struct {
+		name  string
+		sizes []int64
+	}{
+		{"limit cuts inside an entry", []int64{maxBody + block}},
+		{"limit falls exactly between entries", []int64{maxBody - 3*block, 1}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, ts, admin := testServer(t)
+			req, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/users", bytes.NewBufferString(`{"name":"ada"}`))
+			req.Header.Set("Authorization", "Bearer "+admin)
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer res.Body.Close()
+			var created struct {
+				Token string `json:"token"`
+			}
+			if err := json.NewDecoder(res.Body).Decode(&created); err != nil {
+				t.Fatal(err)
+			}
+
+			var buf bytes.Buffer
+			tw := tar.NewWriter(&buf)
+			write := func(name string, size int64) {
+				if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0644, Size: size}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := tw.Write(make([]byte, size)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			write("index.html", 1)
+			for i, size := range tc.sizes {
+				write("f"+strconv.Itoa(i), size)
+			}
+			if err := tw.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			pub, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/sites", &buf)
+			pub.Header.Set("Authorization", "Bearer "+created.Token)
+			pub.Header.Set("Visibility", "owner")
+			pres, err := http.DefaultClient.Do(pub)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer pres.Body.Close()
+			b, _ := io.ReadAll(pres.Body)
+			if pres.StatusCode != http.StatusRequestEntityTooLarge {
+				t.Fatalf("publish %d %s", pres.StatusCode, b)
+			}
+			if !strings.Contains(string(b), "32 MiB") {
+				t.Fatalf("message %q", b)
+			}
+		})
+	}
 }
 
 func TestHTTPPublishAndGet(t *testing.T) {

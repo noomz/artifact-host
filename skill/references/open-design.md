@@ -11,10 +11,17 @@ Export one local OpenDesign project, then publish the standalone HTML through `a
    ```
 
    This app-bundle path is version-dependent. If no working CLI or local daemon is available, stop and explain how to start or locate OpenDesign. Never substitute Apple's `od`.
+
+   Find the daemon URL and pass it explicitly. The desktop app's daemon uses a dynamic loopback port. The CLI default, `http://127.0.0.1:7456`, can be a different OpenDesign instance or another program. A container that publishes that port can answer `API_TOKEN_REQUIRED`, because its traffic does not arrive from a loopback peer. Do not look for a token to fix this: the desktop daemon does not need one for loopback requests. On macOS, list the app's listening ports, then choose the URL where `GET /api/projects` returns the intended project ID:
+
+   ```bash
+   lsof -nP -iTCP -sTCP:LISTEN | grep '^Open'
+   ```
+
 3. Create a fresh private temporary directory. Export the selected project entry to `index.html` inside it:
 
    ```bash
-   od export ENTRY --project PROJECT_ID --format html --out TEMP_DIR/index.html --json
+   od export ENTRY --project PROJECT_ID --format html --out TEMP_DIR/index.html --json --daemon-url DAEMON_URL
    ```
 
    Here `od` means the verified OpenDesign CLI invocation from step 2, not necessarily a literal command on PATH. Stop if export fails, its JSON reports failure, or `index.html` is missing or empty. Inspect the output and any required assets. Never publish the OpenDesign workspace, hidden files, or secrets. Artifact-host limits uploads to 32 MiB and serves a CSP-sandboxed page; not every export will work unchanged.
