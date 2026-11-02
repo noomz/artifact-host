@@ -5,7 +5,27 @@ import (
 	"database/sql"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/noomz/artifact-host/internal/domain"
 )
+
+func TestForeignKeysOnEveryConnection(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "fk.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.sql.SetConnMaxLifetime(time.Nanosecond)
+	time.Sleep(time.Millisecond)
+	var on int
+	if err := db.sql.QueryRow(`PRAGMA foreign_keys`).Scan(&on); err != nil {
+		t.Fatal(err)
+	}
+	if on != 1 {
+		t.Fatalf("foreign_keys = %d on replacement connection", on)
+	}
+}
 
 func TestLegacySitesGainNames(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "legacy.db")
@@ -31,6 +51,16 @@ func TestLegacySitesGainNames(t *testing.T) {
 		site, err := db.Site(context.Background(), "s")
 		if err != nil || site.Name != "" || site.Current != "v" {
 			t.Fatalf("migrated: %+v %v", site, err)
+		}
+		if site.Owner != "u" || site.Visibility != domain.VisPublic {
+			t.Fatalf("site changed: %+v", site)
+		}
+		if u, err := db.UserByTokenHash(context.Background(), []byte{1}); err != nil || u.ID != "u" {
+			t.Fatalf("token lookup: %+v %v", u, err)
+		}
+		active, err := db.HasActiveGrant(context.Background(), "s", time.Now())
+		if err != nil || active {
+			t.Fatalf("legacy site grant: %v %v", active, err)
 		}
 		if err := db.Close(); err != nil {
 			t.Fatal(err)

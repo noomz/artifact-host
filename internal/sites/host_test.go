@@ -1,10 +1,13 @@
 package sites
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/noomz/artifact-host/internal/blob"
 	"github.com/noomz/artifact-host/internal/domain"
@@ -225,6 +228,60 @@ func TestDeleteSiteRemovesBlob(t *testing.T) {
 	}
 	if _, _, err := h.Open(ctx, nil, out.Site, "index.html"); err != domain.ErrNotFound {
 		t.Fatalf("open after delete: %v", err)
+	}
+}
+
+type failingDelete struct{ blob.Store }
+
+func (failingDelete) DeletePrefix(context.Context, string) error {
+	return errors.New("s3 down")
+}
+
+func TestDeleteSiteRemovesGrantsAfterBlob(t *testing.T) {
+	h, actor := setup(t)
+	ctx := context.Background()
+	now := time.Now()
+	idHash := bytes.Repeat([]byte{1}, 32)
+	out, err := h.Publish(ctx, actor, PublishIn{Visibility: domain.VisOwner, Files: html()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Meta.SetSitePassword(ctx, domain.SitePassword{ID: "p", Site: out.Site, Hash: "$argon2id$x"}); err != nil {
+		t.Fatal(err)
+	}
+	link := domain.SiteLink{ID: "l", Site: out.Site, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
+	if err := h.Meta.CreateSiteLink(ctx, link, bytes.Repeat([]byte{2}, 32)); err != nil {
+		t.Fatal(err)
+	}
+	session := domain.GrantSession{Site: out.Site, Link: "l", ExpiresAt: now.Add(time.Hour)}
+	if err := h.Meta.CreateGrantSession(ctx, session, idHash, now); err != nil {
+		t.Fatal(err)
+	}
+
+	stored := h.Blob
+	h.Blob = failingDelete{stored}
+	if err := h.DeleteSite(ctx, out.Site); err == nil {
+		t.Fatal("delete succeeded with blob failure")
+	}
+	if _, err := h.Meta.GrantSession(ctx, out.Site, idHash, now); err != nil {
+		t.Fatalf("session after failed delete: %v", err)
+	}
+	if _, err := h.Meta.SitePassword(ctx, out.Site); err != nil {
+		t.Fatalf("password after failed delete: %v", err)
+	}
+
+	h.Blob = stored
+	if err := h.DeleteSite(ctx, out.Site); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Meta.GrantSession(ctx, out.Site, idHash, now); err != domain.ErrNotFound {
+		t.Fatalf("session after delete: %v", err)
+	}
+	if _, err := h.Meta.SitePassword(ctx, out.Site); err != domain.ErrNotFound {
+		t.Fatalf("password after delete: %v", err)
+	}
+	if links, err := h.Meta.SiteLinks(ctx, out.Site); err != nil || len(links) != 0 {
+		t.Fatalf("links after delete: %+v %v", links, err)
 	}
 }
 

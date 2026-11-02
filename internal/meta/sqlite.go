@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/noomz/artifact-host/internal/domain"
 
@@ -16,15 +17,17 @@ type DB struct {
 }
 
 func Open(path string) (*DB, error) {
-	db, err := sql.Open("sqlite", path)
+	// The pragma is per connection, so it goes in the DSN to reach any
+	// connection database/sql opens later. Grant cleanup depends on cascades.
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	db, err := sql.Open("sqlite", path+sep+"_pragma=foreign_keys(1)")
 	if err != nil {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(`PRAGMA foreign_keys = ON`); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
 	m := &DB{sql: db}
 	if err := m.migrate(); err != nil {
 		_ = db.Close()
@@ -62,6 +65,35 @@ CREATE TABLE IF NOT EXISTS versions (
   id TEXT PRIMARY KEY,
   site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS site_passwords (
+  id TEXT PRIMARY KEY,
+  site_id TEXT NOT NULL UNIQUE REFERENCES sites(id) ON DELETE CASCADE,
+  hash TEXT NOT NULL CHECK (hash LIKE '$argon2id$%'),
+  UNIQUE (id, site_id)
+);
+CREATE TABLE IF NOT EXISTS site_links (
+  id TEXT PRIMARY KEY,
+  site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  token_hash BLOB NOT NULL UNIQUE CHECK (length(token_hash) = 32),
+  label TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  UNIQUE (id, site_id)
+);
+CREATE INDEX IF NOT EXISTS site_links_site ON site_links (site_id);
+CREATE TABLE IF NOT EXISTS grant_sessions (
+  id_hash BLOB PRIMARY KEY CHECK (length(id_hash) = 32),
+  site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  password_id TEXT,
+  link_id TEXT,
+  expires_at INTEGER NOT NULL,
+  CHECK ((password_id IS NULL) <> (link_id IS NULL)),
+  FOREIGN KEY (password_id, site_id) REFERENCES site_passwords(id, site_id) ON DELETE CASCADE,
+  FOREIGN KEY (link_id, site_id) REFERENCES site_links(id, site_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS grant_sessions_password ON grant_sessions (password_id, site_id);
+CREATE INDEX IF NOT EXISTS grant_sessions_link ON grant_sessions (link_id, site_id);
+CREATE INDEX IF NOT EXISTS grant_sessions_site ON grant_sessions (site_id);
 `)
 	if err != nil {
 		return err

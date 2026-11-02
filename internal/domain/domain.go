@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -48,6 +49,34 @@ type File struct {
 	Path        string
 	Body        []byte
 	ContentType string
+}
+
+type PasswordID string
+type LinkID string
+
+// SitePassword is a site's password grant. Hash is an argon2id string.
+type SitePassword struct {
+	ID   PasswordID
+	Site SiteID
+	Hash string
+}
+
+// SiteLink is a share link grant. Its token is stored only as a hash, which
+// this type leaves out so it is safe to list.
+type SiteLink struct {
+	ID        LinkID
+	Site      SiteID
+	Label     string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+// GrantSession is a viewer session from exactly one grant: Password or Link.
+type GrantSession struct {
+	Site      SiteID
+	Password  PasswordID
+	Link      LinkID
+	ExpiresAt time.Time
 }
 
 var (

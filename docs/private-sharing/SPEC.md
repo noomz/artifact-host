@@ -56,7 +56,7 @@ Hostnames stay same-site as `/admin` because all share `noomz.space`. `SameSite`
 | T1 | x | Fix republish visibility reset, with regression test; ship alone first, live bug today | V15 |
 | T2 | x | Add admin CSRF tokens, `Origin` check, `__Host-` cookie | V6 |
 | T3 | x | Choose DNS provider and token handling for DNS-01; set wildcard DNS and cert | V18,I.deploy |
-| T4 | . | Add schema migration and domain types for password, links, sessions | V3,V8,V16 |
+| T4 | x | Add schema migration and domain types for password, links, sessions | V3,V8,V16 |
 | T5 | . | Add host routing and content handler; prove isolation from admin and API | V5,V12,V16,I.host |
 | T6 | . | Add password API, CLI, login form, limiter, sessions | V1,V2,V4,V7,V8,V9,V14,I.password,I.viewer |
 | T7 | . | Add link API, CLI, exchange route, expiry, revoke | V1,V2,V3,V4,V7,V8,V10,V11,V14,I.link,I.viewer |
