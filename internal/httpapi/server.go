@@ -61,6 +61,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PATCH /v1/sites/{id}", s.renameSite)
 	mux.HandleFunc("PUT /v1/sites/{id}/password", s.setSitePassword)
 	mux.HandleFunc("DELETE /v1/sites/{id}/password", s.clearSitePassword)
+	mux.HandleFunc("POST /v1/sites/{id}/links", s.createSiteLink)
+	mux.HandleFunc("DELETE /v1/sites/{id}/links/{link_id}", s.revokeSiteLink)
 	mux.HandleFunc("GET /s/{id}", s.serve)
 	mux.HandleFunc("GET /s/{id}/{path...}", s.serve)
 	s.mountAdmin(mux)

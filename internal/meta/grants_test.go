@@ -420,3 +420,23 @@ func TestPublicVisibilityAndGrantsExcludeEachOther(t *testing.T) {
 		t.Fatalf("SetCurrent on missing site: %v", err)
 	}
 }
+
+// V14
+func TestCreateSiteLinkRefusesPublicAndMissingSite(t *testing.T) {
+	db, _ := openGrants(t)
+	ctx := context.Background()
+	if err := db.InsertSite(ctx, domain.Site{ID: "pub", Owner: "u", Visibility: domain.VisPublic}); err != nil {
+		t.Fatal(err)
+	}
+	l := domain.SiteLink{ID: "l", Site: "pub", CreatedAt: now, ExpiresAt: future}
+	if err := db.CreateSiteLink(ctx, l, hash(1)); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("public site: %v", err)
+	}
+	l.Site = "missing"
+	if err := db.CreateSiteLink(ctx, l, hash(1)); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("missing site: %v", err)
+	}
+	if links, err := db.SiteLinks(ctx, "pub"); err != nil || len(links) != 0 {
+		t.Fatalf("links stored: %+v %v", links, err)
+	}
+}

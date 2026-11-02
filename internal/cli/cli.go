@@ -22,7 +22,7 @@ import (
 
 func Main(args []string) int {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "usage: ah serve|publish|list|rename|password|user|team")
+		fmt.Fprintln(os.Stderr, "usage: ah serve|publish|list|rename|password|link|user|team")
 		return 2
 	}
 	switch args[0] {
@@ -36,6 +36,8 @@ func Main(args []string) int {
 		return cmdRename(args[1:])
 	case "password":
 		return cmdPassword(args[1:])
+	case "link":
+		return cmdLink(args[1:])
 	case "user":
 		return cmdUser(args[1:])
 	case "team":

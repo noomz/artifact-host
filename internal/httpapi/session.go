@@ -200,9 +200,21 @@ func ensureCSRF(w http.ResponseWriter, r *http.Request) (string, error) {
 }
 
 func csrfOK(r *http.Request) bool {
-	if origin := r.Header.Get("Origin"); origin != "" && !strings.EqualFold(origin, requestOrigin(r)) {
-		return false
-	}
+	return originMatches(r) && csrfTokenOK(r)
+}
+
+// csrfOKAllowNullOrigin is for a form on a page with Referrer-Policy: no-referrer.
+// Browsers send "Origin: null" for that form, so only the token can vouch for it.
+func csrfOKAllowNullOrigin(r *http.Request) bool {
+	return (r.Header.Get("Origin") == "null" || originMatches(r)) && csrfTokenOK(r)
+}
+
+func originMatches(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	return origin == "" || strings.EqualFold(origin, requestOrigin(r))
+}
+
+func csrfTokenOK(r *http.Request) bool {
 	c, err := r.Cookie(hostCookieName(r, cookieCSRF))
 	if err != nil || c.Value == "" {
 		return false

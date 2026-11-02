@@ -57,10 +57,26 @@ func (m *DB) SitePassword(ctx context.Context, site domain.SiteID) (domain.SiteP
 	return p, err
 }
 
+// CreateSiteLink returns ErrInvalid on a public site. One statement checks
+// visibility and inserts, so a publish to public cannot slip between the two.
 func (m *DB) CreateSiteLink(ctx context.Context, l domain.SiteLink, tokenHash []byte) error {
-	_, err := m.sql.ExecContext(ctx, `INSERT INTO site_links (id, site_id, token_hash, label, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		l.ID, l.Site, tokenHash, l.Label, l.CreatedAt.Unix(), l.ExpiresAt.Unix())
-	return staleGrant(err)
+	res, err := m.sql.ExecContext(ctx, `INSERT INTO site_links (id, site_id, token_hash, label, created_at, expires_at)
+SELECT ?, id, ?, ?, ?, ? FROM sites WHERE id = ? AND visibility <> ?`,
+		l.ID, tokenHash, l.Label, l.CreatedAt.Unix(), l.ExpiresAt.Unix(), l.Site, domain.VisPublic)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		if _, err := m.Site(ctx, l.Site); err != nil {
+			return err
+		}
+		return domain.ErrInvalid
+	}
+	return nil
 }
 
 // SiteLinks lists all of a site's links, including expired ones.

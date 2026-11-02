@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open shared page</title>
+<main>
+  <h1>Open shared page</h1>
+  <p>Someone shared a private page with you. Anyone who has this link can open the page. Do not enter a password or other personal details unless you trust the person who sent it.</p>
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit">Continue</button>
+  </form>
+</main>

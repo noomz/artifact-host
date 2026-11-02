@@ -83,6 +83,8 @@ func (s *Server) contentHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /"+sites.ReservedDir+"/login", s.grantLoginGET)
 	mux.HandleFunc("POST /"+sites.ReservedDir+"/login", s.grantLoginPOST)
+	mux.HandleFunc("GET /"+sites.ReservedDir+"/link/{token}", s.linkGET)
+	mux.HandleFunc("POST /"+sites.ReservedDir+"/link/{token}", s.linkPOST)
 	mux.HandleFunc("/"+sites.ReservedDir+"/", http.NotFound)
 	mux.HandleFunc("/", s.serveContent)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -99,6 +101,21 @@ func (s *Server) contentHandler() http.Handler {
 		}
 		mux.ServeHTTP(w, r)
 	})
+}
+
+// contentURL is the site's root on its content host. It takes scheme and port
+// from the base URL, since both hosts sit behind the same listener.
+func (s *Server) contentURL(id domain.SiteID) string {
+	scheme, host := "https", string(id)+"."+s.ContentDomain
+	if base, err := url.Parse(s.BaseURL); err == nil {
+		if base.Scheme != "" {
+			scheme = base.Scheme
+		}
+		if port := base.Port(); port != "" {
+			host = net.JoinHostPort(host, port)
+		}
+	}
+	return scheme + "://" + host + "/"
 }
 
 func (s *Server) contentSite(r *http.Request) (domain.Site, error) {
