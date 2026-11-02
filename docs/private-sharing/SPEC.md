@@ -26,7 +26,7 @@ Hostnames stay same-site as `/admin` because all share `noomz.space`. `SameSite`
 - `I.access`: `GET /v1/sites/{id}/access` returns `has_password`, link metadata, `content_url`. CLI `ah access SITE_ID`.
 - `I.viewer`: `GET /__ah/link/{token}` exchanges link for session; `GET|POST /__ah/login` password form. Both on content host only.
 - `I.admin`: `/admin` shows password and link state per site; can clear password and revoke links.
-- `I.deploy`: wildcard DNS, wildcard TLS cert `*.u.artifacts.noomz.space` (DNS-01), nginx server block.
+- `I.deploy`: wildcard DNS on Route 53 (zone `noomz.space`), wildcard TLS cert `*.u.artifacts.noomz.space` (DNS-01 through `certbot-dns-route53`, IAM user `artifact-host-certbot`, script `deploy/setup-wildcard-cert.sh`), nginx server block.
 
 ## §V
 
@@ -47,6 +47,7 @@ Hostnames stay same-site as `/admin` because all share `noomz.space`. `SameSite`
 - V15: Republish without explicit visibility keeps existing visibility and team. New site without visibility stays `public` for compatibility. Republish keeps password and links.
 - V16: Site delete removes S3 prefix first, then grants and sessions. Published file under `__ah/` rejected 400. Migration leaves existing sites, tokens, and URLs unchanged.
 - V17: Tests cover each grant alone and both together, independent revocation, restart survival, host routing, CSRF, rate limit, and secret absence from logs and responses. Assets verified in Chrome, Firefox, Safari over real HTTPS.
+- V18: DNS-01 credential may change only TXT at `_acme-challenge.u.artifacts.noomz.space`. Stored in root-only `/root/.aws/credentials`, never in app `.env` or container.
 
 ## §T
 
@@ -54,7 +55,7 @@ Hostnames stay same-site as `/admin` because all share `noomz.space`. `SameSite`
 |---|---|---|---|
 | T1 | x | Fix republish visibility reset, with regression test; ship alone first, live bug today | V15 |
 | T2 | x | Add admin CSRF tokens, `Origin` check, `__Host-` cookie | V6 |
-| T3 | . | `?` Choose DNS provider and token handling for DNS-01; set wildcard DNS and cert | I.deploy |
+| T3 | x | Choose DNS provider and token handling for DNS-01; set wildcard DNS and cert | V18,I.deploy |
 | T4 | . | Add schema migration and domain types for password, links, sessions | V3,V8,V16 |
 | T5 | . | Add host routing and content handler; prove isolation from admin and API | V5,V12,V16,I.host |
 | T6 | . | Add password API, CLI, login form, limiter, sessions | V1,V2,V4,V7,V8,V9,V14,I.password,I.viewer |
