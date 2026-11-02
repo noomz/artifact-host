@@ -114,6 +114,22 @@ func TestRejectTraversalAndMissingIndex(t *testing.T) {
 	}
 }
 
+func TestRejectReservedDir(t *testing.T) {
+	h, u := setup(t)
+	ctx := context.Background()
+	for _, p := range []string{"__ah", "__ah/login", "/__ah/x.html", "a/../__ah/x", `__ah\x`} {
+		_, err := h.Publish(ctx, u, PublishIn{Visibility: domain.VisPublic, Files: append(html(), domain.File{Path: p, Body: []byte("x")})})
+		if !errors.Is(err, domain.ErrInvalid) {
+			t.Errorf("%q: %v", p, err)
+		}
+	}
+	for _, p := range []string{"__ahx/a", "a/__ah/b", "__AH/a"} {
+		if _, err := h.Publish(ctx, u, PublishIn{Visibility: domain.VisPublic, Files: append(html(), domain.File{Path: p, Body: []byte("x")})}); err != nil {
+			t.Errorf("%q: %v", p, err)
+		}
+	}
+}
+
 func TestRepublishNewVersion(t *testing.T) {
 	h, actor := setup(t)
 	ctx := context.Background()

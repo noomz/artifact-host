@@ -49,6 +49,7 @@ func cmdServe(args []string) int {
 	listen := fs.String("listen", env("ARTIFACT_HOST_LISTEN", ":8080"), "listen address")
 	sqlite := fs.String("sqlite", env("ARTIFACT_HOST_SQLITE", "artifact-host.db"), "sqlite path")
 	base := fs.String("base-url", env("ARTIFACT_HOST_BASE_URL", "http://localhost:8080"), "public base URL")
+	contentDomain := fs.String("content-domain", os.Getenv("ARTIFACT_HOST_CONTENT_DOMAIN"), "parent domain of per-site content hosts (empty disables them)")
 	bucket := fs.String("s3-bucket", os.Getenv("ARTIFACT_HOST_S3_BUCKET"), "S3 bucket")
 	endpoint := fs.String("s3-endpoint", os.Getenv("ARTIFACT_HOST_S3_ENDPOINT"), "S3 endpoint (minio)")
 	region := fs.String("s3-region", env("ARTIFACT_HOST_S3_REGION", "us-east-1"), "S3 region")
@@ -64,6 +65,11 @@ func cmdServe(args []string) int {
 	}
 	if *bucket == "" {
 		fmt.Fprintln(os.Stderr, "--s3-bucket or ARTIFACT_HOST_S3_BUCKET is required")
+		return 2
+	}
+	content, err := httpapi.ParseContentDomain(*contentDomain, *base)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
 	db, err := meta.Open(*sqlite)
@@ -85,6 +91,7 @@ func cmdServe(args []string) int {
 	}
 	h := sites.New(db, s3)
 	srv := httpapi.New(h, admin, *base)
+	srv.ContentDomain = content
 	fmt.Fprintf(os.Stderr, "listening %s\n", *listen)
 	if err := http.ListenAndServe(*listen, srv.Handler()); err != nil {
 		fmt.Fprintln(os.Stderr, err)

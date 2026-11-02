@@ -20,14 +20,16 @@ const maxBody = 32 << 20
 var errBodyTooLarge = errors.New("upload exceeds 32 MiB limit")
 
 type Server struct {
-	Host      *sites.Host
-	Admin     string
-	BaseURL   string
-	newUserID func() domain.UserID
-	newTeamID func() domain.TeamID
-	newToken  func() (raw string, hash []byte)
-	sessions  *sessionStore
-	logins    *loginLimit
+	Host    *sites.Host
+	Admin   string
+	BaseURL string
+	// ContentDomain is the parent of per-site content hosts. Empty disables them.
+	ContentDomain string
+	newUserID     func() domain.UserID
+	newTeamID     func() domain.TeamID
+	newToken      func() (raw string, hash []byte)
+	sessions      *sessionStore
+	logins        *loginLimit
 }
 
 func New(h *sites.Host, admin, baseURL string) *Server {
@@ -58,7 +60,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /s/{id}", s.serve)
 	mux.HandleFunc("GET /s/{id}/{path...}", s.serve)
 	s.mountAdmin(mux)
-	return mux
+	if s.ContentDomain == "" {
+		return mux
+	}
+	content := s.contentHandler()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := contentLabel(r.Host, s.ContentDomain); ok {
+			content.ServeHTTP(w, r)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {

@@ -126,10 +126,10 @@ func (l *loginLimit) prune(ip string) []time.Time {
 	return keep
 }
 
-// adminCookieName adds the __Host- prefix on HTTPS. Browsers refuse a __Host-
+// hostCookieName adds the __Host- prefix on HTTPS. Browsers refuse a __Host-
 // cookie set from a subdomain or over HTTP, so content hosts cannot plant one.
 // Reading only this name means an unprefixed cookie is ignored on HTTPS.
-func adminCookieName(r *http.Request, base string) string {
+func hostCookieName(r *http.Request, base string) string {
 	if forwardedHTTPS(r) {
 		return "__Host-" + base
 	}
@@ -138,7 +138,7 @@ func adminCookieName(r *http.Request, base string) string {
 
 func csrfCookie(r *http.Request, val string) *http.Cookie {
 	return &http.Cookie{
-		Name:     adminCookieName(r, cookieCSRF),
+		Name:     hostCookieName(r, cookieCSRF),
 		Value:    val,
 		Path:     "/",
 		MaxAge:   int(sessionTTL.Seconds()),
@@ -152,7 +152,7 @@ func csrfCookie(r *http.Request, val string) *http.Cookie {
 // so that forms in other open tabs stay valid.
 func ensureCSRF(w http.ResponseWriter, r *http.Request) (string, error) {
 	var tok string
-	if c, err := r.Cookie(adminCookieName(r, cookieCSRF)); err == nil {
+	if c, err := r.Cookie(hostCookieName(r, cookieCSRF)); err == nil {
 		tok = c.Value
 	}
 	if tok == "" {
@@ -169,7 +169,7 @@ func csrfOK(r *http.Request) bool {
 	if origin := r.Header.Get("Origin"); origin != "" && !strings.EqualFold(origin, requestOrigin(r)) {
 		return false
 	}
-	c, err := r.Cookie(adminCookieName(r, cookieCSRF))
+	c, err := r.Cookie(hostCookieName(r, cookieCSRF))
 	if err != nil || c.Value == "" {
 		return false
 	}

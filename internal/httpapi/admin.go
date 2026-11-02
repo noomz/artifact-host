@@ -20,13 +20,13 @@ var (
 )
 
 var adminErrText = map[string]string{
-	"bad_form":       "That form was not valid.",
-	"bad_token":      "That token was not accepted.",
-	"rate":           "Too many sign-in attempts. Wait and try again.",
-	"name":           "A name is required.",
-	"user_required":  "Pick a user.",
-	"owns_sites":     "That user still owns sites.",
-	"team_sites":     "That team is still used by sites.",
+	"bad_form":      "That form was not valid.",
+	"bad_token":     "That token was not accepted.",
+	"rate":          "Too many sign-in attempts. Wait and try again.",
+	"name":          "A name is required.",
+	"user_required": "Pick a user.",
+	"owns_sites":    "That user still owns sites.",
+	"team_sites":    "That team is still used by sites.",
 }
 
 type teamView struct {
@@ -112,7 +112,7 @@ func (s *Server) adminLoginPOST(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) adminLogout(w http.ResponseWriter, r *http.Request) {
-	if c, err := r.Cookie(adminCookieName(r, cookieSession)); err == nil {
+	if c, err := r.Cookie(hostCookieName(r, cookieSession)); err == nil {
 		s.sessions.revoke(c.Value)
 	}
 	http.SetCookie(w, s.sessionCookie(r, "", -1))
@@ -317,7 +317,7 @@ func (s *Server) adminErr(w http.ResponseWriter, r *http.Request, code string) {
 }
 
 func (s *Server) sessionOK(r *http.Request) bool {
-	c, err := r.Cookie(adminCookieName(r, cookieSession))
+	c, err := r.Cookie(hostCookieName(r, cookieSession))
 	if err != nil {
 		return false
 	}
@@ -333,7 +333,7 @@ func (s *Server) adminEq(got string) bool {
 
 func (s *Server) sessionCookie(r *http.Request, val string, maxAge int) *http.Cookie {
 	return &http.Cookie{
-		Name:     adminCookieName(r, cookieSession),
+		Name:     hostCookieName(r, cookieSession),
 		Value:    val,
 		Path:     "/",
 		MaxAge:   maxAge,

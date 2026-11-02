@@ -15,6 +15,10 @@ import (
 	"github.com/noomz/artifact-host/internal/meta"
 )
 
+// ReservedDir holds the server's own routes on content hosts, so a published
+// file there could never be served.
+const ReservedDir = "__ah"
+
 type Host struct {
 	Meta *meta.DB
 	Blob blob.Store
@@ -126,10 +130,16 @@ func (h *Host) Open(ctx context.Context, actor *domain.Principal, siteID domain.
 		}
 		return nil, "", domain.ErrForbidden
 	}
+	return h.OpenCurrent(ctx, s, filePath)
+}
+
+// OpenCurrent reads a file from the site's live version. It checks no ACL: the
+// caller must have authorized the read.
+func (h *Host) OpenCurrent(ctx context.Context, s domain.Site, filePath string) (io.ReadCloser, string, error) {
 	if s.Current == "" {
 		return nil, "", domain.ErrNotFound
 	}
-	filePath, err = CleanPath(filePath)
+	filePath, err := CleanPath(filePath)
 	if err != nil {
 		return nil, "", err
 	}
@@ -186,7 +196,7 @@ func NormalizeFiles(files []domain.File) ([]domain.File, error) {
 		if err != nil {
 			return nil, err
 		}
-		if p == "" {
+		if p == "" || p == ReservedDir || strings.HasPrefix(p, ReservedDir+"/") {
 			return nil, domain.ErrInvalid
 		}
 		if _, dup := seen[p]; dup {
