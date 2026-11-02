@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/noomz/artifact-host/internal/blob"
+	"github.com/noomz/artifact-host/internal/domain"
 	"github.com/noomz/artifact-host/internal/httpapi"
 	"github.com/noomz/artifact-host/internal/meta"
 	"github.com/noomz/artifact-host/internal/sites"
@@ -48,5 +49,12 @@ func TestPublishListAndRename(t *testing.T) {
 	site, err := db.Site(context.Background(), items[0].ID)
 	if err != nil || site.Name != "renamed" {
 		t.Fatalf("site %+v %v", site, err)
+	}
+	if code := Main([]string{"publish", "--site", string(items[0].ID), dir}); code != 0 {
+		t.Fatalf("republish exit %d", code)
+	}
+	site, err = db.Site(context.Background(), items[0].ID)
+	if err != nil || site.Visibility != domain.VisOwner {
+		t.Fatalf("republish without --visibility: %+v %v", site, err)
 	}
 }

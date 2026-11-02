@@ -96,7 +96,7 @@ func cmdServe(args []string) int {
 func cmdPublish(args []string) int {
 	fs := flag.NewFlagSet("publish", flag.ContinueOnError)
 	dir := fs.String("dir", "", "directory to publish")
-	vis := fs.String("visibility", "public", "public|owner|team")
+	vis := fs.String("visibility", "", "public|owner|team (default: public for a new site, unchanged for --site)")
 	team := fs.String("team", "", "team id when visibility=team")
 	site := fs.String("site", "", "existing site id to replace")
 	name := fs.String("name", "", "artifact display name")
@@ -123,7 +123,9 @@ func cmdPublish(args []string) int {
 		return 1
 	}
 	req.Header.Set("Authorization", "Bearer "+*token)
-	req.Header.Set("Visibility", *vis)
+	if *vis != "" {
+		req.Header.Set("Visibility", *vis)
+	}
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "name" {
 			req.Header["Site-Name"] = []string{url.QueryEscape(*name)}

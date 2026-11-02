@@ -49,9 +49,6 @@ func (h *Host) Publish(ctx context.Context, actor domain.Principal, in PublishIn
 	if err != nil {
 		return PublishOut{}, err
 	}
-	if err := in.Visibility.Check(in.Team); err != nil {
-		return PublishOut{}, err
-	}
 
 	var existing *domain.Site
 	if in.Site != "" {
@@ -71,6 +68,17 @@ func (h *Host) Publish(ctx context.Context, actor domain.Principal, in PublishIn
 		return PublishOut{}, domain.ErrForbidden
 	}
 
+	vis, team := in.Visibility, in.Team
+	if vis == "" && team == "" {
+		vis = domain.VisPublic
+		if existing != nil {
+			vis, team = existing.Visibility, existing.Team
+		}
+	}
+	if err := vis.Check(team); err != nil {
+		return PublishOut{}, err
+	}
+
 	siteID := in.Site
 	owner := actor.User
 	if existing != nil {
@@ -84,8 +92,8 @@ func (h *Host) Publish(ctx context.Context, actor domain.Principal, in PublishIn
 		if err := h.Meta.InsertSite(ctx, domain.Site{
 			ID:         siteID,
 			Owner:      owner,
-			Team:       in.Team,
-			Visibility: in.Visibility,
+			Team:       team,
+			Visibility: vis,
 		}); err != nil {
 			return PublishOut{}, err
 		}
@@ -101,7 +109,7 @@ func (h *Host) Publish(ctx context.Context, actor domain.Principal, in PublishIn
 			return PublishOut{}, err
 		}
 	}
-	if err := h.Meta.SetCurrent(ctx, siteID, ver, in.Visibility, in.Team, in.Name); err != nil {
+	if err := h.Meta.SetCurrent(ctx, siteID, ver, vis, team, in.Name); err != nil {
 		return PublishOut{}, err
 	}
 	return PublishOut{Site: siteID, Version: ver}, nil

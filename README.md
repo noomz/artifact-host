@@ -27,7 +27,7 @@ ah list --scope owned --name hello
 ah rename SITE_ID "New name"
 ```
 
-`GET` the returned `url`. Owner and team sites need `Authorization: Bearer <token>` on read. Names are optional, need not be unique, and do not change URLs. Names are trimmed and limited to 200 Unicode characters. Use `ah rename SITE_ID ""` to clear one. Republish with `--site SITE_ID` and omit `--name` to preserve its name.
+`GET` the returned `url`. Owner and team sites need `Authorization: Bearer <token>` on read. Names are optional, need not be unique, and do not change URLs. Names are trimmed and limited to 200 Unicode characters. Use `ah rename SITE_ID ""` to clear one. Republish with `--site SITE_ID` and omit `--name` to preserve its name. Omit `--visibility` to keep its current visibility and team. A new site without `--visibility` is public.
 
 `ah list` returns your sites and team-visible sites shared with your teams. Filter by `--name` (case-insensitive substring), `--visibility public|owner|team`, or `--scope all|owned|team`. Team scope includes your own team-visible sites when you are a member of that team. Results are JSON.
 

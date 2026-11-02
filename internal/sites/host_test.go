@@ -140,6 +140,79 @@ func TestRepublishNewVersion(t *testing.T) {
 	}
 }
 
+func TestPublishVisibilityDefaults(t *testing.T) {
+	tests := []struct {
+		name     string
+		first    PublishIn
+		second   PublishIn
+		wantVis  domain.Visibility
+		wantTeam domain.TeamID
+	}{
+		{"republish keeps owner", PublishIn{Visibility: domain.VisOwner}, PublishIn{}, domain.VisOwner, ""},
+		{"republish keeps team", PublishIn{Visibility: domain.VisTeam, Team: "team1"}, PublishIn{}, domain.VisTeam, "team1"},
+		{"republish keeps public", PublishIn{Visibility: domain.VisPublic}, PublishIn{}, domain.VisPublic, ""},
+		{"explicit visibility replaces owner", PublishIn{Visibility: domain.VisOwner}, PublishIn{Visibility: domain.VisPublic}, domain.VisPublic, ""},
+		{"explicit visibility replaces team", PublishIn{Visibility: domain.VisTeam, Team: "team1"}, PublishIn{Visibility: domain.VisOwner}, domain.VisOwner, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, actor := setup(t)
+			ctx := context.Background()
+			if err := h.Meta.CreateTeam(ctx, "team1", "core"); err != nil {
+				t.Fatal(err)
+			}
+			tt.first.Files = html()
+			out, err := h.Publish(ctx, actor, tt.first)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tt.second.Site = out.Site
+			tt.second.Files = html()
+			if _, err := h.Publish(ctx, actor, tt.second); err != nil {
+				t.Fatal(err)
+			}
+			got, err := h.Meta.Site(ctx, out.Site)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Visibility != tt.wantVis || got.Team != tt.wantTeam {
+				t.Fatalf("got %q team %q, want %q team %q", got.Visibility, got.Team, tt.wantVis, tt.wantTeam)
+			}
+		})
+	}
+}
+
+func TestNewSiteWithoutVisibilityIsPublic(t *testing.T) {
+	h, actor := setup(t)
+	ctx := context.Background()
+	out, err := h.Publish(ctx, actor, PublishIn{Files: html()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := h.Meta.Site(ctx, out.Site)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Visibility != domain.VisPublic {
+		t.Fatalf("got %q", got.Visibility)
+	}
+}
+
+func TestTeamWithoutVisibilityRejected(t *testing.T) {
+	h, actor := setup(t)
+	ctx := context.Background()
+	if _, err := h.Publish(ctx, actor, PublishIn{Team: "team1", Files: html()}); err != domain.ErrInvalid {
+		t.Fatalf("new site: %v", err)
+	}
+	out, err := h.Publish(ctx, actor, PublishIn{Visibility: domain.VisOwner, Files: html()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Publish(ctx, actor, PublishIn{Site: out.Site, Team: "team1", Files: html()}); err != domain.ErrInvalid {
+		t.Fatalf("republish: %v", err)
+	}
+}
+
 func TestDeleteSiteRemovesBlob(t *testing.T) {
 	h, actor := setup(t)
 	ctx := context.Background()
@@ -167,4 +240,3 @@ func TestStrangerCannotRepublish(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
-

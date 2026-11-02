@@ -132,10 +132,13 @@ func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	vis, err := domain.ParseVisibility(headerOr(r, "Visibility", "X-Visibility", "public"))
-	if err != nil {
-		writeErr(w, err)
-		return
+	var vis domain.Visibility
+	if v := headerOr(r, "Visibility", "X-Visibility", ""); v != "" {
+		vis, err = domain.ParseVisibility(v)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
 	}
 	files, err := readTarFiles(w, r)
 	if err != nil {

@@ -216,3 +216,59 @@ func TestHTTPPrivateUnauthorized(t *testing.T) {
 	}
 	_ = admin
 }
+
+func TestHTTPRepublishWithoutVisibilityKeepsSitePrivate(t *testing.T) {
+	s, ts, _ := testServer(t)
+	if err := s.Host.Meta.CreateUser(context.Background(), "u1", "ada", TokenHash("usertok")); err != nil {
+		t.Fatal(err)
+	}
+	publish := func(siteID, vis, body string) string {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/sites", tarBody(t, map[string]string{"index.html": body}))
+		req.Header.Set("Authorization", "Bearer usertok")
+		if siteID != "" {
+			req.Header.Set("Site-Id", siteID)
+		}
+		if vis != "" {
+			req.Header.Set("Visibility", vis)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		if res.StatusCode != http.StatusCreated {
+			b, _ := io.ReadAll(res.Body)
+			t.Fatalf("publish %d %s", res.StatusCode, b)
+		}
+		var out struct {
+			ID string `json:"id"`
+		}
+		if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+			t.Fatal(err)
+		}
+		return out.ID
+	}
+	id := publish("", "owner", "v1")
+	publish(id, "", "v2")
+
+	anon, err := http.Get(ts.URL + "/s/" + id + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer anon.Body.Close()
+	if anon.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("anon get %d", anon.StatusCode)
+	}
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/s/"+id+"/", nil)
+	req.Header.Set("Authorization", "Bearer usertok")
+	owner, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Body.Close()
+	b, _ := io.ReadAll(owner.Body)
+	if owner.StatusCode != http.StatusOK || string(b) != "v2" {
+		t.Fatalf("owner get %d %q", owner.StatusCode, b)
+	}
+}

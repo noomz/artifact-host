@@ -20,7 +20,7 @@ The user has a URL. `GET` on that URL returns the page (public) or 401 without a
 ah publish --visibility public ./DIR
 ```
 
-`--visibility owner` for only the token owner. `--visibility team --team TEAM_ID` for a team. `--site SITE_ID` replaces the current version of an existing site.
+`--visibility owner` for only the token owner. `--visibility team --team TEAM_ID` for a team. `--site SITE_ID` replaces the current version of an existing site and keeps its visibility and team unless you pass `--visibility`.
 
 If `ah` is not on PATH, POST a tar of the directory to `$ARTIFACT_HOST_URL/v1/sites` with `Authorization: Bearer $ARTIFACT_HOST_TOKEN` and header `Visibility`.
 
