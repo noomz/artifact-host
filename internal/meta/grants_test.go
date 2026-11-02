@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -358,5 +359,64 @@ func TestSiteDeleteCascadesGrants(t *testing.T) {
 	}
 	if !sessionLive(t, db, siteB, 3) {
 		t.Fatal("other site's session ended")
+	}
+}
+
+// V14: the store refuses these itself, so concurrent callers cannot get past a
+// check made earlier in the request.
+func TestPublicVisibilityAndGrantsExcludeEachOther(t *testing.T) {
+	db, _ := openGrants(t)
+	ctx := context.Background()
+	versions := 0
+	publish := func(site domain.SiteID, vis domain.Visibility) error {
+		versions++
+		ver := domain.VersionID(fmt.Sprintf("v%d", versions))
+		if err := db.InsertVersion(ctx, site, ver); err != nil {
+			t.Fatal(err)
+		}
+		return db.SetCurrent(ctx, site, ver, vis, "", nil, now)
+	}
+
+	setPassword(t, db, siteA, "p")
+	if err := publish(siteA, domain.VisPublic); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("public with password: %v", err)
+	}
+	if s, err := db.Site(ctx, siteA); err != nil || s.Visibility != domain.VisOwner || s.Current != "" {
+		t.Fatalf("refused update changed site: %+v %v", s, err)
+	}
+	if err := db.ClearSitePassword(ctx, siteA); err != nil {
+		t.Fatal(err)
+	}
+
+	addLink(t, db, siteA, "live", 1, future)
+	if err := publish(siteA, domain.VisPublic); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("public with live link: %v", err)
+	}
+	if err := publish(siteA, domain.VisOwner); err != nil {
+		t.Fatalf("private republish with link: %v", err)
+	}
+	if err := db.RevokeSiteLink(ctx, siteA, "live"); err != nil {
+		t.Fatal(err)
+	}
+
+	addLink(t, db, siteA, "old", 2, now.Add(-time.Hour))
+	if err := publish(siteA, domain.VisPublic); err != nil {
+		t.Fatalf("public with only an expired link: %v", err)
+	}
+	err := db.SetSitePassword(ctx, domain.SitePassword{ID: "q", Site: siteA, Hash: argon})
+	if !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("password on public site: %v", err)
+	}
+	if _, err := db.SitePassword(ctx, siteA); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("password stored on public site: %v", err)
+	}
+
+	err = db.SetSitePassword(ctx, domain.SitePassword{ID: "r", Site: "missing", Hash: argon})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("password on missing site: %v", err)
+	}
+	err = db.SetCurrent(ctx, "missing", "v", domain.VisPublic, "", nil, now)
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("SetCurrent on missing site: %v", err)
 	}
 }

@@ -14,7 +14,9 @@ import (
 
 // SetSitePassword replaces the site's password. The new row has a new ID, so
 // sessions from the old password cascade away, and a login still verifying the
-// old password cannot create a session afterwards.
+// old password cannot create a session afterwards. It returns ErrInvalid on a
+// public site. The DELETE takes the write lock first, so the visibility read
+// cannot go stale before the INSERT.
 func (m *DB) SetSitePassword(ctx context.Context, p domain.SitePassword) error {
 	tx, err := m.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -23,6 +25,17 @@ func (m *DB) SetSitePassword(ctx context.Context, p domain.SitePassword) error {
 	defer tx.Rollback()
 	if _, err := tx.ExecContext(ctx, `DELETE FROM site_passwords WHERE site_id = ?`, p.Site); err != nil {
 		return err
+	}
+	var vis domain.Visibility
+	err = tx.QueryRowContext(ctx, `SELECT visibility FROM sites WHERE id = ?`, p.Site).Scan(&vis)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if vis == domain.VisPublic {
+		return domain.ErrInvalid
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO site_passwords (id, site_id, hash) VALUES (?, ?, ?)`, p.ID, p.Site, p.Hash); err != nil {
 		return staleGrant(err)

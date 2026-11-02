@@ -85,43 +85,77 @@ func (st *sessionStore) revoke(id string) {
 }
 
 type loginLimit struct {
-	mu   sync.Mutex
-	fail map[string][]time.Time
+	mu        sync.Mutex
+	fail      map[string][]time.Time
+	lastSweep time.Time
+}
+
+type limitKey struct {
+	key string
+	max int
 }
 
 func newLoginLimit() *loginLimit {
-	return &loginLimit{fail: make(map[string][]time.Time)}
+	return &loginLimit{fail: make(map[string][]time.Time), lastSweep: time.Now()}
 }
 
 func (l *loginLimit) begin(ip string) bool {
+	return l.reserve(limitKey{ip, loginMaxFail})
+}
+
+// reserve counts an attempt against every key, or against none if any key is at
+// its limit. Counting before the password check stops concurrent guesses from
+// passing the limit together.
+func (l *loginLimit) reserve(keys ...limitKey) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	keep := l.prune(ip)
-	if len(keep) >= loginMaxFail {
-		return false
+	if now := time.Now(); now.Sub(l.lastSweep) > loginWindow {
+		l.lastSweep = now
+		for k := range l.fail {
+			l.prune(k)
+		}
 	}
-	l.fail[ip] = append(keep, time.Now())
+	for _, k := range keys {
+		if len(l.prune(k.key)) >= k.max {
+			return false
+		}
+	}
+	now := time.Now()
+	for _, k := range keys {
+		l.fail[k.key] = append(l.fail[k.key], now)
+	}
 	return true
 }
 
-func (l *loginLimit) clear(ip string) {
+func (l *loginLimit) clear(key string) {
 	l.mu.Lock()
-	delete(l.fail, ip)
+	delete(l.fail, key)
 	l.mu.Unlock()
 }
 
-func (l *loginLimit) prune(ip string) []time.Time {
+// refund takes back one attempt, for a key that other clients share.
+func (l *loginLimit) refund(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if n := len(l.fail[key]); n > 1 {
+		l.fail[key] = l.fail[key][:n-1]
+	} else {
+		delete(l.fail, key)
+	}
+}
+
+func (l *loginLimit) prune(key string) []time.Time {
 	cut := time.Now().Add(-loginWindow)
 	var keep []time.Time
-	for _, t := range l.fail[ip] {
+	for _, t := range l.fail[key] {
 		if t.After(cut) {
 			keep = append(keep, t)
 		}
 	}
 	if len(keep) == 0 {
-		delete(l.fail, ip)
+		delete(l.fail, key)
 	} else {
-		l.fail[ip] = keep
+		l.fail[key] = keep
 	}
 	return keep
 }

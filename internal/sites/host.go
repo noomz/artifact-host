@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"io"
 	"mime"
 	"path"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/noomz/artifact-host/internal/blob"
@@ -82,6 +84,17 @@ func (h *Host) Publish(ctx context.Context, actor domain.Principal, in PublishIn
 	if err := vis.Check(team); err != nil {
 		return PublishOut{}, err
 	}
+	// SetCurrent enforces this too. Checking here stops a rejected publish from
+	// leaving files behind.
+	if existing != nil && vis == domain.VisPublic {
+		active, err := h.Meta.HasActiveGrant(ctx, existing.ID, time.Now())
+		if err != nil {
+			return PublishOut{}, err
+		}
+		if active {
+			return PublishOut{}, errPublicWithGrants
+		}
+	}
 
 	siteID := in.Site
 	owner := actor.User
@@ -113,7 +126,10 @@ func (h *Host) Publish(ctx context.Context, actor domain.Principal, in PublishIn
 			return PublishOut{}, err
 		}
 	}
-	if err := h.Meta.SetCurrent(ctx, siteID, ver, vis, team, in.Name); err != nil {
+	if err := h.Meta.SetCurrent(ctx, siteID, ver, vis, team, in.Name, time.Now()); err != nil {
+		if errors.Is(err, domain.ErrInvalid) {
+			return PublishOut{}, errPublicWithGrants
+		}
 		return PublishOut{}, err
 	}
 	return PublishOut{Site: siteID, Version: ver}, nil

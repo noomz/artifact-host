@@ -30,18 +30,20 @@ type Server struct {
 	newToken      func() (raw string, hash []byte)
 	sessions      *sessionStore
 	logins        *loginLimit
+	grantLogins   *loginLimit
 }
 
 func New(h *sites.Host, admin, baseURL string) *Server {
 	return &Server{
-		Host:      h,
-		Admin:     admin,
-		BaseURL:   strings.TrimRight(baseURL, "/"),
-		newUserID: func() domain.UserID { return domain.UserID(sites.NewID()) },
-		newTeamID: func() domain.TeamID { return domain.TeamID(sites.NewID()) },
-		newToken:  newToken,
-		sessions:  newSessionStore(),
-		logins:    newLoginLimit(),
+		Host:        h,
+		Admin:       admin,
+		BaseURL:     strings.TrimRight(baseURL, "/"),
+		newUserID:   func() domain.UserID { return domain.UserID(sites.NewID()) },
+		newTeamID:   func() domain.TeamID { return domain.TeamID(sites.NewID()) },
+		newToken:    newToken,
+		sessions:    newSessionStore(),
+		logins:      newLoginLimit(),
+		grantLogins: newLoginLimit(),
 	}
 }
 
@@ -57,6 +59,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sites", s.publish)
 	mux.HandleFunc("GET /v1/sites", s.listSites)
 	mux.HandleFunc("PATCH /v1/sites/{id}", s.renameSite)
+	mux.HandleFunc("PUT /v1/sites/{id}/password", s.setSitePassword)
+	mux.HandleFunc("DELETE /v1/sites/{id}/password", s.clearSitePassword)
 	mux.HandleFunc("GET /s/{id}", s.serve)
 	mux.HandleFunc("GET /s/{id}/{path...}", s.serve)
 	s.mountAdmin(mux)

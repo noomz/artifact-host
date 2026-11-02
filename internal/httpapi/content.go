@@ -81,6 +81,8 @@ func contentLabel(host, contentDomain string) (label string, ok bool) {
 // reached from a content host.
 func (s *Server) contentHandler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /"+sites.ReservedDir+"/login", s.grantLoginGET)
+	mux.HandleFunc("POST /"+sites.ReservedDir+"/login", s.grantLoginPOST)
 	mux.HandleFunc("/"+sites.ReservedDir+"/", http.NotFound)
 	mux.HandleFunc("/", s.serveContent)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

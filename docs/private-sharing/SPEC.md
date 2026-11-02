@@ -61,7 +61,7 @@ Accepted risk (2026-11-02): keep `{id}.u.artifacts.noomz.space`. Registrable dom
 | T3 | x | Choose DNS provider and token handling for DNS-01; set wildcard DNS and cert | V18,I.deploy |
 | T4 | x | Add schema migration and domain types for password, links, sessions | V3,V8,V16 |
 | T5 | x | Add host routing and content handler; prove isolation from admin and API | V5,V12,V16,V19,I.host |
-| T6 | . | Add password API, CLI, login form, limiter, sessions | V1,V2,V4,V7,V8,V9,V14,I.password,I.viewer |
+| T6 | x | Add password API, CLI, login form, limiter, sessions | V1,V2,V4,V7,V8,V9,V14,I.password,I.viewer |
 | T7 | . | Add link API, CLI, exchange route, expiry, revoke | V1,V2,V3,V4,V7,V8,V10,V11,V14,I.link,I.viewer |
 | T8 | . | Add access API and CLI; admin state and revoke; `/s/` redirect | V4,V13,I.access,I.admin |
 | T9 | . | Update nginx and deploy scripts; document in README and skill | V10,I.deploy |

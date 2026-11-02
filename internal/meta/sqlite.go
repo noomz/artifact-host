@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/noomz/artifact-host/internal/domain"
 
@@ -194,12 +195,17 @@ func (m *DB) InsertVersion(ctx context.Context, site domain.SiteID, ver domain.V
 	return err
 }
 
-func (m *DB) SetCurrent(ctx context.Context, site domain.SiteID, ver domain.VersionID, vis domain.Visibility, team domain.TeamID, name *string) error {
+// SetCurrent returns ErrInvalid if it would make a site with an active grant
+// public. One statement does the check and the update, so a concurrent grant
+// cannot land between them.
+func (m *DB) SetCurrent(ctx context.Context, site domain.SiteID, ver domain.VersionID, vis domain.Visibility, team domain.TeamID, name *string, now time.Time) error {
 	var t any
 	if team != "" {
 		t = string(team)
 	}
-	res, err := m.sql.ExecContext(ctx, `UPDATE sites SET current_version = ?, visibility = ?, team_id = ?, name = COALESCE(?, name) WHERE id = ?`, ver, vis, t, name, site)
+	res, err := m.sql.ExecContext(ctx, `UPDATE sites SET current_version = ?, visibility = ?, team_id = ?, name = COALESCE(?, name)
+WHERE id = ? AND (? <> ? OR NOT (EXISTS (SELECT 1 FROM site_passwords WHERE site_id = sites.id) OR EXISTS (SELECT 1 FROM site_links WHERE site_id = sites.id AND expires_at > ?)))`,
+		ver, vis, t, name, site, vis, domain.VisPublic, now.Unix())
 	if err != nil {
 		return err
 	}
@@ -208,7 +214,10 @@ func (m *DB) SetCurrent(ctx context.Context, site domain.SiteID, ver domain.Vers
 		return err
 	}
 	if n == 0 {
-		return domain.ErrNotFound
+		if _, err := m.Site(ctx, site); err != nil {
+			return err
+		}
+		return domain.ErrInvalid
 	}
 	return nil
 }

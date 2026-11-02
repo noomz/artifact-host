@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Password required</title>
+<main>
+  <h1>Password required</h1>
+  {{if .Err}}<p role="alert">{{.Err}}</p>{{end}}
+  <form method="post" action="/__ah/login">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="next" value="{{.Next}}">
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+    <button type="submit">Open</button>
+  </form>
+</main>
