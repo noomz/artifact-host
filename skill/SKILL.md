@@ -7,12 +7,12 @@ description: Publish a static HTML site to self-hosted artifact-host. Use when t
 
 ## Done when
 
-The user has a URL. `GET` on that URL returns the page (public) or 401 without a bearer token (owner/team).
+The user has a URL. In a browser, a public site's URL opens the page on its own host `https://SITE_ID.u.artifacts.noomz.space/` (the `/s/` URL answers 302 there; use `curl -L`). Owner/team URLs return 401 without a bearer token.
 
 ## Steps
 
 1. Need `ARTIFACT_HOST_URL` and `ARTIFACT_HOST_TOKEN`. If missing, stop and ask. Do not invent a host. For an OpenDesign project, follow [OpenDesign handoff](references/open-design.md) instead of steps 2–4 below, then give the user the result.
-2. Put the site in one directory with `index.html` at the top. No backend. Relative asset paths only.
+2. Put the site in one directory with `index.html` at the top. No backend. Relative asset paths and links only. Pages may load scripts and styles only from their own files, jsDelivr, unpkg, cdnjs, esm.sh, and Google Fonts; no forms, no images or `fetch` from other hosts. Inline anything else.
 3. If the session has no HTML yet, write a single-file `index.html` (inline CSS/JS). Do not wait on Claude Design, Codex Sites, or a vendor artifact tool.
 4. Publish:
 
@@ -32,7 +32,7 @@ Only for `owner` or `team` sites, and only the site owner's token can do it. Pub
 
 - Password: `ah password set SITE_ID` prompts. In a non-interactive session, pipe it: `printf %s "$PW" | ah password set SITE_ID --stdin`. Use the password the user gave. Never pass it as a flag, and do not echo it back. 8 to 1024 bytes.
 - Link: `ah link create SITE_ID --label "who it is for" --expires 7d` (default 7d, max 365d). The URL is printed once, so give it to the user right away. It is a secret: anyone with it can read the site until it expires or is revoked.
-- Check state: `ah access SITE_ID` prints `has_password`, link ids and expiry, and `content_url`. The page for viewers is `content_url`, not the `/s/` URL.
+- Check state: `ah access SITE_ID` prints `has_password`, link ids and expiry, and `content_url`. Give viewers `content_url` or the link URL. The `/s/` URL also redirects there, but `content_url` skips the hop.
 - Undo: `ah password clear SITE_ID`, `ah link revoke SITE_ID LINK_ID`. Takes effect on the next request.
 
 If the server says passwords and share links need `ARTIFACT_HOST_CONTENT_DOMAIN`, the feature is off on that host. Tell the user. Do not fall back to making the site public.

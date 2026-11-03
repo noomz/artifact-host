@@ -31,7 +31,7 @@ ah rename SITE_ID "New name"
 
 `ah list` returns your sites and team-visible sites shared with your teams. Filter by `--name` (case-insensitive substring), `--visibility public|owner|team`, or `--scope all|owned|team`. Team scope includes your own team-visible sites when you are a member of that team. Results are JSON.
 
-Admin UI is `/admin` (login with the admin token). Sessions are random ids, not the admin token. Create users, rotate tokens, teams, delete sites. New tokens are shown once on the POST response. The site list shows each site's password and share-link state, and admin can clear a password or revoke a link, but cannot read or create them. Pages on `/s/` get `Content-Security-Policy: sandbox` so they cannot use the admin cookie. They still share a hostname with `/admin`; see B2 in `docs/private-sharing/SPEC.md`.
+Admin UI is `/admin` (login with the admin token). Sessions are random ids, not the admin token. Create users, rotate tokens, teams, delete sites. New tokens are shown once on the POST response. The site list shows each site's password and share-link state, and admin can clear a password or revoke a link, but cannot read or create them. When `ARTIFACT_HOST_CONTENT_DOMAIN` is set, browsers never read a page on the `/admin` hostname: anonymous visits to `/s/SITE_ID/` on a public site, or on a site with a password or link, redirect to the site's own content host (see Private sharing). Only bearer reads, and owner or team sites without a grant, stay on `/s/`, and those pages get `Content-Security-Policy: sandbox` so they cannot use the admin cookie.
 
 ## Private sharing
 
@@ -45,7 +45,7 @@ ah link revoke SITE_ID LINK_ID
 ah access SITE_ID                  # has_password, links, content_url
 ```
 
-A site with a grant is served from its own host, `https://SITE_ID.u.artifacts.noomz.space/`, set by `ARTIFACT_HOST_CONTENT_DOMAIN` (empty turns the feature off). Viewers there see a password form or a share-link page with a Continue button, then get a 24-hour session cookie. A link session never outlives the link. Links expire after 7 days by default, at most 365 days. Changing the password ends password sessions only; revoking a link ends that link's sessions only. Both take effect on the next request. Anonymous visits to `/s/SITE_ID/` on such a site redirect to the content host. Bearer reads on `/s/` work as before.
+Public sites and sites with a grant are served from their own host, `https://SITE_ID.u.artifacts.noomz.space/`, set by `ARTIFACT_HOST_CONTENT_DOMAIN` (empty turns the feature off and keeps every page on `/s/`). Anyone can read a public site there, with no login. Pages on the content host get a CSP that allows only their own files plus a few fixed CDNs (jsDelivr, unpkg, cdnjs, esm.sh, Google Fonts) and blocks forms, so inline other assets and use relative links. Viewers of a protected site there see a password form or a share-link page with a Continue button, then get a 24-hour session cookie. A link session never outlives the link. Links expire after 7 days by default, at most 365 days. Changing the password ends password sessions only; revoking a link ends that link's sessions only. Both take effect on the next request. Anonymous visits to `/s/SITE_ID/` on a public or granted site redirect (302) to the content host, same path and query. Bearer reads on `/s/` work as before.
 
 The password is never a flag value, and neither the password nor the link token is stored or logged in plain text. Only the site owner can set grants. Team members cannot. Password attempts are limited to 5 failures per 15 minutes per site and IP.
 
@@ -64,7 +64,8 @@ The password is never a flag value, and neither the password nor the link token 
 | `POST` | `/v1/sites/{id}/links` | owner, JSON `{"label","expires_in"}`, `expires_in` like `7d` or `12h` (default `7d`); URL returned once |
 | `DELETE` | `/v1/sites/{id}/links/{link_id}` | owner |
 | `GET` | `/v1/sites/{id}/access` | owner; `has_password`, link metadata, `content_url` |
-| `GET` | `/s/{id}/...` | ACL on the site |
+| `GET` | `/s/{id}/...` | ACL on the site; anonymous on a public or granted site gets 302 to the content host |
+| `GET` | `https://{id}.u.artifacts.noomz.space/...` | content host: anyone on a public site, password or link session otherwise |
 | `GET`, `POST` | `/__ah/login`, `/__ah/link/{token}` | content host only; viewer forms |
 
 ## Deploy
