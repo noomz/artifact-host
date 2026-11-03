@@ -44,6 +44,13 @@ if ! grep -q '^AWS_ACCESS_KEY_ID=.\+' "$ROOT/.env"; then
   exit 2
 fi
 
+# docker-compose.yml turns on content hosts, so their cert must exist first.
+CONTENT_CERT=/etc/letsencrypt/live/u.artifacts.noomz.space/fullchain.pem
+if ! sudo test -f "$CONTENT_CERT"; then
+  echo "missing $CONTENT_CERT; run deploy/setup-wildcard-cert.sh from your laptop, then re-run" >&2
+  exit 2
+fi
+
 cp "$ROOT/.env" "$ROOT/src/deploy/.env"
 sudo docker compose -f "$ROOT/src/deploy/docker-compose.yml" --project-directory "$ROOT/src/deploy" up -d --build
 
@@ -52,6 +59,21 @@ sudo ln -sfn /etc/nginx/sites-available/artifacts /etc/nginx/sites-enabled/artif
 sudo nginx -t
 sudo systemctl reload nginx
 sudo certbot --nginx -d artifacts.noomz.space --non-interactive --agree-tos --redirect --register-unsafely-without-email
+
+sudo cp "$ROOT/src/deploy/nginx-content.conf" /etc/nginx/sites-available/artifacts-content
+sudo ln -sfn /etc/nginx/sites-available/artifacts-content /etc/nginx/sites-enabled/artifacts-content
+sudo nginx -t
+sudo systemctl reload nginx
+
 curl -sfS https://artifacts.noomz.space/healthz
 echo
 echo "ok https://artifacts.noomz.space/healthz"
+
+# An unknown site on a content host must be 404 from the app over valid TLS.
+probe=https://00000000000000000000000000000000.u.artifacts.noomz.space/
+code=$(curl -sS -o /dev/null -w '%{http_code}' "$probe")
+if [[ "$code" != 404 ]]; then
+  echo "content host probe $probe returned $code, want 404" >&2
+  exit 1
+fi
+echo "ok content host 404 for unknown site"

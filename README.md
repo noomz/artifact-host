@@ -31,7 +31,23 @@ ah rename SITE_ID "New name"
 
 `ah list` returns your sites and team-visible sites shared with your teams. Filter by `--name` (case-insensitive substring), `--visibility public|owner|team`, or `--scope all|owned|team`. Team scope includes your own team-visible sites when you are a member of that team. Results are JSON.
 
-Admin UI is `/admin` (login with the admin token). Sessions are random ids, not the admin token. Create users, rotate tokens, teams, delete sites. New tokens are shown once on the POST response. Published pages get `Content-Security-Policy: sandbox` so they cannot use the admin cookie. A separate user-content origin is still the long-term isolation.
+Admin UI is `/admin` (login with the admin token). Sessions are random ids, not the admin token. Create users, rotate tokens, teams, delete sites. New tokens are shown once on the POST response. The site list shows each site's password and share-link state, and admin can clear a password or revoke a link, but cannot read or create them. Pages on `/s/` get `Content-Security-Policy: sandbox` so they cannot use the admin cookie. They still share a hostname with `/admin`; see B2 in `docs/private-sharing/SPEC.md`.
+
+## Private sharing
+
+An `owner` or `team` site can also be opened in any browser, without an account, by password, by share link, or both. These are grants on the site, not visibility values. Public sites cannot have grants.
+
+```bash
+ah password set SITE_ID            # prompts; or: printf %s "$PW" | ah password set SITE_ID --stdin
+ah password clear SITE_ID
+ah link create SITE_ID --label "Review" --expires 7d   # prints the URL once
+ah link revoke SITE_ID LINK_ID
+ah access SITE_ID                  # has_password, links, content_url
+```
+
+A site with a grant is served from its own host, `https://SITE_ID.u.artifacts.noomz.space/`, set by `ARTIFACT_HOST_CONTENT_DOMAIN` (empty turns the feature off). Viewers there see a password form or a share-link page with a Continue button, then get a 24-hour session cookie. A link session never outlives the link. Links expire after 7 days by default, at most 365 days. Changing the password ends password sessions only; revoking a link ends that link's sessions only. Both take effect on the next request. Anonymous visits to `/s/SITE_ID/` on such a site redirect to the content host. Bearer reads on `/s/` work as before.
+
+The password is never a flag value, and neither the password nor the link token is stored or logged in plain text. Only the site owner can set grants. Team members cannot. Password attempts are limited to 5 failures per 15 minutes per site and IP.
 
 ## API
 
@@ -43,9 +59,22 @@ Admin UI is `/admin` (login with the admin token). Sessions are random ids, not 
 | `POST` | `/v1/sites` | user token, tar body, headers `Visibility`, optional `Site-Id`, `Team-Id`, `Site-Name` (URL query-encoded UTF-8) |
 | `GET` | `/v1/sites` | user token; optional query `name`, `visibility`, `scope` (`all`, `owned`, `team`) |
 | `PATCH` | `/v1/sites/{id}` | owner user token, JSON `{"name":"New name"}`; empty name clears |
+| `PUT` | `/v1/sites/{id}/password` | owner, JSON `{"password"}` (8 to 1024 bytes) |
+| `DELETE` | `/v1/sites/{id}/password` | owner |
+| `POST` | `/v1/sites/{id}/links` | owner, JSON `{"label","expires_in"}`, `expires_in` like `7d` or `12h` (default `7d`); URL returned once |
+| `DELETE` | `/v1/sites/{id}/links/{link_id}` | owner |
+| `GET` | `/v1/sites/{id}/access` | owner; `has_password`, link metadata, `content_url` |
 | `GET` | `/s/{id}/...` | ACL on the site |
+| `GET`, `POST` | `/__ah/login`, `/__ah/link/{token}` | content host only; viewer forms |
 
-Production on proxy-a is `https://artifacts.noomz.space`. Install: `deploy/install-proxy-a.sh` (nginx like `stm.noomz.space`, bucket `noomz-artifact-host` in `ap-southeast-1`). Put AWS keys in `/opt/artifact-host/.env` on the host.
+## Deploy
+
+Production on proxy-a is `https://artifacts.noomz.space`, with content hosts under `*.u.artifacts.noomz.space`. Bucket `noomz-artifact-host` in `ap-southeast-1`. Run these from your laptop:
+
+1. `deploy/setup-wildcard-cert.sh` (once, safe to re-run): the IAM user `artifact-host-certbot` may change only the `_acme-challenge.u.artifacts.noomz.space` TXT record. Its key goes in `/root/.aws/credentials` on the host, never in the app's `.env`. The script also issues the `*.u.artifacts.noomz.space` cert through `certbot-dns-route53` (it renews and reloads nginx by itself) and sets the wildcard A record in Route 53.
+2. `deploy/bootstrap-proxy-a.sh` (first install) or `deploy/rebuild-proxy-a.sh` (push HEAD first). Both run `deploy/install-proxy-a.sh` on the host. That script stops if the wildcard cert is missing, then installs `nginx-http.conf` for the main host and `nginx-content.conf` for content hosts. It ends by checking `/healthz` and a 404 from an unknown content host.
+
+`nginx-content.conf` turns off access and error logs for `/__ah/link/`, and turns off logging on the plain-HTTP redirect, since those paths hold link tokens. `go test ./deploy` checks this and that all deploy files name the same content domain.
 
 The agent skill is `skill/SKILL.md`. Copy it into the agent's skills directory.
 
