@@ -118,23 +118,37 @@ func (s *Server) contentURL(id domain.SiteID) string {
 	return scheme + "://" + host + "/"
 }
 
-func (s *Server) contentSite(r *http.Request) (domain.Site, error) {
+// hostSite is the site named by the request's content host, whatever its
+// visibility or grants.
+func (s *Server) hostSite(r *http.Request) (domain.Site, error) {
 	label, ok := contentLabel(r.Host, s.ContentDomain)
 	if !ok || !contentIDPattern.MatchString(label) {
 		return domain.Site{}, domain.ErrNotFound
 	}
-	site, err := s.Host.Meta.Site(r.Context(), domain.SiteID(label))
+	return s.Host.Meta.Site(r.Context(), domain.SiteID(label))
+}
+
+// contentSite is the host's site if it has an active grant. The grant routes
+// under /__ah/ use it, so a public site has none of them.
+func (s *Server) contentSite(r *http.Request) (domain.Site, error) {
+	site, err := s.hostSite(r)
 	if err != nil {
 		return domain.Site{}, err
 	}
+	return site, s.requireActiveGrant(r, site)
+}
+
+// requireActiveGrant answers ErrNotFound for a site without one, so a private
+// site with no grant looks the same as no site.
+func (s *Server) requireActiveGrant(r *http.Request, site domain.Site) error {
 	active, err := s.Host.Meta.HasActiveGrant(r.Context(), site.ID, time.Now())
 	if err != nil {
-		return domain.Site{}, err
+		return err
 	}
 	if !active {
-		return domain.Site{}, domain.ErrNotFound
+		return domain.ErrNotFound
 	}
-	return site, nil
+	return nil
 }
 
 func (s *Server) serveContent(w http.ResponseWriter, r *http.Request) {
@@ -142,17 +156,23 @@ func (s *Server) serveContent(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	site, err := s.contentSite(r)
+	site, err := s.hostSite(r)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	allowed, err := s.contentAllowed(r, site)
-	if err != nil {
+	if site.Visibility == domain.VisPublic {
+		// Anyone may read it, so a search engine may index it. Visibility is
+		// read every request, so no cache may keep it after it turns private.
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Del("X-Robots-Tag")
+	} else if err := s.requireActiveGrant(r, site); err != nil {
 		writeErr(w, err)
 		return
-	}
-	if !allowed {
+	} else if allowed, err := s.contentAllowed(r, site); err != nil {
+		writeErr(w, err)
+		return
+	} else if !allowed {
 		// Same redirect for every grant type, so it does not reveal which exist.
 		http.Redirect(w, r, "/"+sites.ReservedDir+"/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusSeeOther)
 		return

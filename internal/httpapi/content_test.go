@@ -52,8 +52,15 @@ func newContentFixture(t *testing.T) *contentFixture {
 
 func (f *contentFixture) site() domain.SiteID {
 	f.t.Helper()
+	return f.publish("", domain.VisOwner)
+}
+
+// publish creates a site, or republishes one when id is set.
+func (f *contentFixture) publish(id domain.SiteID, vis domain.Visibility) domain.SiteID {
+	f.t.Helper()
 	out, err := f.srv.Host.Publish(context.Background(), f.owner, sites.PublishIn{
-		Visibility: domain.VisOwner,
+		Site:       id,
+		Visibility: vis,
 		Files: []domain.File{
 			{Path: "index.html", Body: []byte("site home")},
 			{Path: "admin/index.html", Body: []byte("site admin file")},
@@ -259,8 +266,8 @@ func TestContentDomainEmptyDisablesContentHosts(t *testing.T) {
 	wantStatus(t, f.do(contentReq{host: hostOf(site), path: "/healthz"}), http.StatusOK)
 }
 
-// V5: a site without an active grant is absent from the content host, for its
-// owner too. Public sites have no content host.
+// V5: a private site without an active grant is absent from the content host,
+// for its owner too.
 func TestContentHostSiteWithoutGrantIs404(t *testing.T) {
 	f := newContentFixture(t)
 	site := f.site()
@@ -415,6 +422,87 @@ func TestContentHeaders(t *testing.T) {
 	if strings.Contains(contentCSP, "sandbox") || strings.Contains(contentCSP, "*") {
 		t.Errorf("contentCSP %q", contentCSP)
 	}
+}
+
+// V20, V12: a public site is served to anyone, with the site CSP, indexable,
+// and never cached.
+func TestContentPublicSiteServedWithoutGrant(t *testing.T) {
+	f := newContentFixture(t)
+	site := f.publish("", domain.VisPublic)
+	for name, q := range map[string]contentReq{
+		"anonymous GET":  {host: hostOf(site), path: "/"},
+		"anonymous HEAD": {method: http.MethodHead, host: hostOf(site), path: "/index.html"},
+		"other user":     {host: hostOf(site), path: "/", bearer: "other-token"},
+		"bad bearer":     {host: hostOf(site), path: "/", bearer: "invalid-token"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := f.do(q)
+			wantStatus(t, w, http.StatusOK)
+			if q.method == "" && w.Body.String() != "site home" {
+				t.Errorf("body %q", w.Body.String())
+			}
+			h := w.Header()
+			if got := h.Get("Cache-Control"); got != "no-store" {
+				t.Errorf("Cache-Control %q", got)
+			}
+			if got, ok := h["X-Robots-Tag"]; ok {
+				t.Errorf("X-Robots-Tag %q", got)
+			}
+			if got := h.Get("Content-Security-Policy"); got != contentCSP {
+				t.Errorf("CSP %q", got)
+			}
+			if got := h.Get("X-Content-Type-Options"); got != "nosniff" {
+				t.Errorf("X-Content-Type-Options %q", got)
+			}
+		})
+	}
+}
+
+// V5, V19: a public site's host serves its files and nothing else. Router paths
+// are site files, and the grant routes do not exist.
+func TestContentPublicSiteIsolation(t *testing.T) {
+	f := newContentFixture(t)
+	site := f.publish("", domain.VisPublic)
+	host := hostOf(site)
+	for path, body := range map[string]string{"/admin/index.html": "site admin file", "/v1/a.html": "site v1 file"} {
+		w := f.do(contentReq{host: host, path: path})
+		wantStatus(t, w, http.StatusOK)
+		if w.Body.String() != body {
+			t.Errorf("%s body %q", path, w.Body.String())
+		}
+	}
+	for name, q := range map[string]contentReq{
+		"POST file":      {method: http.MethodPost, host: host, path: "/"},
+		"PUT file":       {method: http.MethodPut, host: host, path: "/index.html"},
+		"login GET":      {host: host, path: "/__ah/login"},
+		"login POST":     {method: http.MethodPost, host: host, path: "/__ah/login"},
+		"link GET":       {host: host, path: "/__ah/link/" + strings.Repeat("a", 64)},
+		"link POST":      {method: http.MethodPost, host: host, path: "/__ah/link/" + strings.Repeat("a", 64)},
+		"reserved":       {host: host, path: "/__ah/nothing"},
+		"missing file":   {host: host, path: "/missing"},
+		"service worker": {host: host, path: "/index.html", headers: map[string]string{"Service-Worker": "script"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			wantStatus(t, f.do(q), http.StatusNotFound)
+		})
+	}
+}
+
+// V20: visibility is read on every request.
+func TestContentPublicVisibilityChangeAppliesNextRequest(t *testing.T) {
+	f := newContentFixture(t)
+	site := f.publish("", domain.VisPublic)
+	get := func() *httptest.ResponseRecorder { return f.do(contentReq{host: hostOf(site), path: "/"}) }
+	wantStatus(t, get(), http.StatusOK)
+	f.publish(site, domain.VisOwner)
+	wantStatus(t, get(), http.StatusNotFound)
+	f.password(site)
+	wantLoginRedirect(t, get())
+	if err := f.db.ClearSitePassword(context.Background(), site); err != nil {
+		t.Fatal(err)
+	}
+	f.publish(site, domain.VisPublic)
+	wantStatus(t, get(), http.StatusOK)
 }
 
 // V19

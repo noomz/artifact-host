@@ -69,7 +69,7 @@ T11 design A (user 2026-11-03): browsers read every site, public included, on it
 | T8 | x | Add access API and CLI; admin state and revoke; `/s/` redirect | V4,V13,I.access,I.admin |
 | T9 | x | Update nginx and deploy scripts; document in README and skill | V10,I.deploy |
 | T10 | x | Run full tests; verify both grants live over HTTPS in Chrome, Firefox, Safari | V17 |
-| T11 | . | Serve public sites on content host without grant; headers per V20; isolation and header tests | V5,V12,V19,V20,I.host |
+| T11 | x | Serve public sites on content host without grant; headers per V20; isolation and header tests | V5,V12,V19,V20,I.host |
 | T12 | . | Redirect anonymous `/s/` on public sites to content host; keep bearer and no-grant paths; tests | V13,B2 |
 | T13 | . | Update README, skill, admin copy that place pages on `/s/`; deploy; verify public and granted sites live in Chrome, Firefox, Safari | V13,V17,V20 |
 
