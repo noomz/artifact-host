@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/noomz/artifact-host/internal/domain"
 )
@@ -34,10 +35,21 @@ type teamView struct {
 	Members []domain.User
 }
 
+type linkView struct {
+	domain.SiteLink
+	Expired bool
+}
+
+type siteView struct {
+	domain.Site
+	HasPassword bool
+	Links       []linkView
+}
+
 type dashData struct {
 	Users []domain.User
 	Teams []teamView
-	Sites []domain.Site
+	Sites []siteView
 	Base  string
 	Err   string
 	CSRF  string
@@ -63,6 +75,8 @@ func (s *Server) mountAdmin(mux *http.ServeMux) {
 	post("/admin/teams/{id}/members", s.adminAddMember)
 	post("/admin/teams/{id}/members/{uid}/delete", s.adminRemoveMember)
 	post("/admin/sites/{id}/delete", s.adminDeleteSite)
+	post("/admin/sites/{id}/password/delete", s.adminClearPassword)
+	post("/admin/sites/{id}/links/{link_id}/delete", s.adminRevokeLink)
 }
 
 func adminHeaders(w http.ResponseWriter) {
@@ -279,6 +293,28 @@ func (s *Server) adminDeleteSite(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
+func (s *Server) adminClearPassword(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdmin(w, r) {
+		return
+	}
+	if err := s.Host.Meta.ClearSitePassword(r.Context(), domain.SiteID(r.PathValue("id"))); err != nil {
+		s.adminErr(w, r, "bad_form")
+		return
+	}
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
+func (s *Server) adminRevokeLink(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdmin(w, r) {
+		return
+	}
+	if err := s.Host.Meta.RevokeSiteLink(r.Context(), domain.SiteID(r.PathValue("id")), domain.LinkID(r.PathValue("link_id"))); err != nil {
+		s.adminErr(w, r, "bad_form")
+		return
+	}
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
 func (s *Server) loadDash(r *http.Request) (dashData, error) {
 	ctx := r.Context()
 	users, err := s.Host.Meta.ListUsers(ctx)
@@ -301,7 +337,20 @@ func (s *Server) loadDash(r *http.Request) (dashData, error) {
 	if err != nil {
 		return dashData{}, err
 	}
-	return dashData{Users: users, Teams: tv, Sites: sites, Base: s.BaseURL}, nil
+	now := time.Now()
+	views := make([]siteView, 0, len(sites))
+	for _, site := range sites {
+		access, err := s.Host.Grants(ctx, site.ID)
+		if err != nil {
+			return dashData{}, err
+		}
+		links := make([]linkView, 0, len(access.Links))
+		for _, l := range access.Links {
+			links = append(links, linkView{SiteLink: l, Expired: !l.ExpiresAt.After(now)})
+		}
+		views = append(views, siteView{Site: site, HasPassword: access.HasPassword, Links: links})
+	}
+	return dashData{Users: users, Teams: tv, Sites: views, Base: s.BaseURL}, nil
 }
 
 func (s *Server) requireAdmin(w http.ResponseWriter, r *http.Request) bool {

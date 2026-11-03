@@ -101,7 +101,7 @@
   <section>
     <h2>Sites</h2>
     <table>
-      <thead><tr><th>Name</th><th>ID</th><th>Visibility</th><th>Owner</th><th>Team</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>ID</th><th>Visibility</th><th>Owner</th><th>Team</th><th>Access</th><th></th></tr></thead>
       <tbody>
       {{range .Sites}}
         <tr>
@@ -111,11 +111,21 @@
           <td class="mono">{{.Owner}}</td>
           <td class="mono">{{.Team}}</td>
           <td>
+            {{$site := .ID}}
+            {{if .HasPassword}}
+              <div>Password <form class="inline" method="post" action="/admin/sites/{{$site}}/password/delete" onsubmit="return confirm('Clear password?')"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="danger" type="submit">Clear</button></form></div>
+            {{end}}
+            {{range .Links}}
+              <div>Link {{.Label}} <span class="mono">{{.ID}}</span> {{if .Expired}}expired{{else}}expires{{end}} {{.ExpiresAt.Format "2006-01-02 15:04 UTC"}} <form class="inline" method="post" action="/admin/sites/{{$site}}/links/{{.ID}}/delete" onsubmit="return confirm('Revoke link?')"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="danger" type="submit">Revoke</button></form></div>
+            {{end}}
+            {{if and (not .HasPassword) (not .Links)}}<span class="muted">None</span>{{end}}
+          </td>
+          <td>
             <form class="inline" method="post" action="/admin/sites/{{.ID}}/delete" onsubmit="return confirm('Delete site?')"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="danger" type="submit">Delete</button></form>
           </td>
         </tr>
       {{else}}
-        <tr><td colspan="6" class="muted">No sites</td></tr>
+        <tr><td colspan="7" class="muted">No sites</td></tr>
       {{end}}
       </tbody>
     </table>

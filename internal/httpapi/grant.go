@@ -182,6 +182,40 @@ func (s *Server) revokeSiteLink(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) siteAccess(w http.ResponseWriter, r *http.Request) {
+	actor, err := s.principal(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	id := domain.SiteID(r.PathValue("id"))
+	access, err := s.Host.Access(r.Context(), actor, id)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	type linkResult struct {
+		ID        domain.LinkID `json:"id"`
+		Label     string        `json:"label"`
+		CreatedAt time.Time     `json:"created_at"`
+		ExpiresAt time.Time     `json:"expires_at"`
+	}
+	links := make([]linkResult, 0, len(access.Links))
+	for _, l := range access.Links {
+		links = append(links, linkResult{l.ID, l.Label, l.CreatedAt, l.ExpiresAt})
+	}
+	contentURL := ""
+	if s.ContentDomain != "" {
+		contentURL = s.contentURL(id)
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"has_password": access.HasPassword,
+		"links":        links,
+		"content_url":  contentURL,
+	})
+}
+
 // liveLink writes the response itself when the token is no good. Every failure is
 // the same 404, so a request cannot tell invalid, expired, and revoked apart. The
 // token is in the URL, so no response from here may send it on as a referrer.

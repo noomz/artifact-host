@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/noomz/artifact-host/internal/domain"
 	"github.com/noomz/artifact-host/internal/sites"
@@ -63,6 +64,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/sites/{id}/password", s.clearSitePassword)
 	mux.HandleFunc("POST /v1/sites/{id}/links", s.createSiteLink)
 	mux.HandleFunc("DELETE /v1/sites/{id}/links/{link_id}", s.revokeSiteLink)
+	mux.HandleFunc("GET /v1/sites/{id}/access", s.siteAccess)
 	mux.HandleFunc("GET /s/{id}", s.serve)
 	mux.HandleFunc("GET /s/{id}/{path...}", s.serve)
 	s.mountAdmin(mux)
@@ -301,6 +303,26 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := r.PathValue("path")
+	if actor == nil && s.ContentDomain != "" {
+		id := domain.SiteID(r.PathValue("id"))
+		active, err := s.Host.Meta.HasActiveGrant(r.Context(), id, time.Now())
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		if active {
+			// A grant can end, and /s/ must then respond as before, so the
+			// redirect must not be cached. The path follows a fixed host, so no
+			// path can send the viewer to another host.
+			target := s.contentURL(id) + (&url.URL{Path: p}).EscapedPath()
+			if r.URL.RawQuery != "" {
+				target += "?" + r.URL.RawQuery
+			}
+			w.Header().Set("Cache-Control", "no-store")
+			http.Redirect(w, r, target, http.StatusFound)
+			return
+		}
+	}
 	body, ctype, err := s.Host.Open(r.Context(), actor, domain.SiteID(r.PathValue("id")), p)
 	if err != nil {
 		writeErr(w, err)

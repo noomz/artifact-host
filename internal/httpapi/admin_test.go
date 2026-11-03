@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/noomz/artifact-host/internal/domain"
 )
@@ -117,6 +118,14 @@ func adminFixture(t *testing.T, s *Server, base, admin string) (routes []string,
 	if err != nil || len(sites) != 1 {
 		t.Fatalf("sites %v %v", sites, err)
 	}
+	if err := s.Host.Meta.SetSitePassword(ctx, domain.SitePassword{ID: "p1", Site: sites[0].ID, Hash: testArgon}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	link := domain.SiteLink{ID: "l1", Site: sites[0].ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
+	if err := s.Host.Meta.CreateSiteLink(ctx, link, TokenHash("fixture-link")); err != nil {
+		t.Fatal(err)
+	}
 	return []string{
 		"/admin/login",
 		"/admin/users",
@@ -124,6 +133,8 @@ func adminFixture(t *testing.T, s *Server, base, admin string) (routes []string,
 		"/admin/teams",
 		"/admin/teams/t1/members",
 		"/admin/teams/t1/members/" + created.ID + "/delete",
+		"/admin/sites/" + string(sites[0].ID) + "/password/delete",
+		"/admin/sites/" + string(sites[0].ID) + "/links/l1/delete",
 		"/admin/sites/" + string(sites[0].ID) + "/delete",
 		"/admin/teams/t1/delete",
 		"/admin/users/" + created.ID + "/delete",
@@ -150,7 +161,15 @@ func adminState(t *testing.T, s *Server) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return fmt.Sprint(users, teams, members, sites)
+	state := fmt.Sprint(users, teams, members, sites)
+	for _, site := range sites {
+		access, err := s.Host.Grants(ctx, site.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		state += fmt.Sprint(access)
+	}
+	return state
 }
 
 func TestValidateAdminToken(t *testing.T) {
@@ -420,8 +439,9 @@ func TestAdminFormsCarryCSRF(t *testing.T) {
 	}
 	defer res.Body.Close()
 	b, _ := io.ReadAll(res.Body)
-	// Forms inside each range: rotate, delete user, member, remove, delete site.
-	for _, action := range []string{"/rotate", "/members/", "/admin/sites/"} {
+	// Forms inside each range: rotate, delete user, member, remove, delete site,
+	// clear password, revoke link.
+	for _, action := range []string{"/rotate", "/members/", "/admin/sites/", "/password/delete", "/links/l1/delete"} {
 		if !strings.Contains(string(b), action) {
 			t.Fatalf("dashboard missing %s: %s", action, b)
 		}
