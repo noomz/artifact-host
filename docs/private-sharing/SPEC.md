@@ -71,7 +71,7 @@ T11 design A (user 2026-11-03): browsers read every site, public included, on it
 | T10 | x | Run full tests; verify both grants live over HTTPS in Chrome, Firefox, Safari | V17 |
 | T11 | x | Serve public sites on content host without grant; headers per V20; isolation and header tests | V5,V12,V19,V20,I.host |
 | T12 | x | Redirect anonymous `/s/` on public sites to content host; keep bearer and no-grant paths; tests | V13,B2 |
-| T13 | . | Update README, skill, admin copy that place pages on `/s/`; deploy; verify public and granted sites live in Chrome, Firefox, Safari | V13,V17,V20 |
+| T13 | x | Update README, skill, admin copy that place pages on `/s/`; deploy; verify public and granted sites live in Chrome, Firefox, Safari | V13,V17,V20 |
 
 ## §B
 
