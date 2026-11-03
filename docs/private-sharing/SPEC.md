@@ -20,9 +20,11 @@ Hostnames stay same-site as `/admin` because all share `noomz.space`. `SameSite`
 
 Accepted risk (2026-11-02): keep `{id}.u.artifacts.noomz.space`. Registrable domain is `noomz.space`, so page script can toss cookies at sibling apps, and phishing reputation is shared. V12 CSP blocks forms, `fetch`, and remote images, but script can still leak data through navigation.
 
+T11 design A (user 2026-11-03): browsers read every site, public included, on its content host, never on the `/admin` hostname. `/s/` keeps bearer reads and owner/team sites without grant. Public sites get same V12 CSP; page needing other hosts must inline assets. Pages use relative links only.
+
 ## §I
 
-- `I.host`: `https://{id}.u.artifacts.noomz.space/` serves protected site. Config `ARTIFACT_HOST_CONTENT_DOMAIN`. Empty disables feature.
+- `I.host`: `https://{id}.u.artifacts.noomz.space/` serves public site and site with active grant. Config `ARTIFACT_HOST_CONTENT_DOMAIN`. Empty disables feature.
 - `I.password`: `PUT /v1/sites/{id}/password` JSON `{"password"}`; `DELETE` clears. CLI `ah password set SITE_ID` (prompt or `--stdin`), `ah password clear SITE_ID`.
 - `I.link`: `POST /v1/sites/{id}/links` JSON `{"label","expires_in"}` returns URL once; `DELETE /v1/sites/{id}/links/{link_id}` revokes. CLI `ah link create SITE_ID [--label L] [--expires 7d]`, `ah link revoke SITE_ID LINK_ID`.
 - `I.access`: `GET /v1/sites/{id}/access` returns `has_password`, link metadata, `content_url`. CLI `ah access SITE_ID`.
@@ -36,7 +38,7 @@ Accepted risk (2026-11-02): keep `{id}.u.artifacts.noomz.space`. Registrable dom
 - V2: Grants are independent. Changing password ends password sessions only. Revoking link ends that link's sessions only. Removing one grant leaves other working.
 - V3: Revocation, expiry, password change, and site delete take effect on next request. Session validity checked against DB every request. Sessions survive server restart.
 - V4: Only site owner manages grants through API and CLI. Admin may clear or revoke, not read secrets or create. Team members cannot manage.
-- V5: Content host serves site files and `/__ah/*` only. Its router never reaches `/admin`, `/v1`, `/s`, or `/healthz` handlers; those are ordinary site paths there. Non-GET/HEAD outside `/__ah/*` returns 404. Host must match `[0-9a-f]{32}` plus exact content domain. Unknown ID, or site without active grant, returns 404.
+- V5: Content host serves site files and `/__ah/*` only. Its router never reaches `/admin`, `/v1`, `/s`, or `/healthz` handlers; those are ordinary site paths there. Non-GET/HEAD outside `/__ah/*` returns 404. Host must match `[0-9a-f]{32}` plus exact content domain. Unknown ID, or owner/team site without active grant, returns 404. Public site served without grant; its `/__ah/*` returns 404.
 - V6: Admin POST routes require CSRF token and reject cross-origin `Origin`. Admin cookie uses `__Host-` prefix. Ships before any content host goes live.
 - V7: Grant cookie `__Host-ah_grant`: random ID, hash stored server-side, `HttpOnly`, `Secure`, `SameSite=Lax`, host-only, `Path=/`. Never holds password or link token. Plain-HTTP local dev may drop prefix and `Secure`.
 - V8: Password stored as argon2id only; length 8 to 1024 bytes. Link token 256-bit random, stored as SHA-256, shown once. Plaintext of either never in DB, logs, list, or access responses. CLI never takes password as flag value.
@@ -44,13 +46,14 @@ Accepted risk (2026-11-02): keep `{id}.u.artifacts.noomz.space`. Registrable dom
 - V10: Invalid, expired, and revoked link tokens give same 404 on GET and POST. GET shows server-owned warning page with Continue button, creates no session. POST requires CSRF token, responds 303 to `/` with cookie. Both send `Referrer-Policy: no-referrer`. nginx does not log `/__ah/link/` paths.
 - V11: Link expiry required: default 7 days, maximum 365 days. Link usable repeatedly until expiry or revoke. Session lasts 24 hours, never past link expiry.
 - V12: Protected responses send `Cache-Control: private, no-store`, `X-Robots-Tag: noindex`. Site files send CSP `default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com https://esm.sh; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data: blob:; connect-src 'self'; form-action 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'`. CDN list fixed in code, never any host. `/__ah/*` pages use own CSP with `form-action 'self'`, `frame-ancestors 'none'`. Login redirect keeps path; target must be same-host path, no open redirect.
-- V13: Anonymous request to `/s/{id}/...` on site with active grant redirects to content host, same path. With no active grant, responds as today. Bearer requests to `/s/` served as today.
+- V13: Anonymous request to `/s/{id}/...` on public site, or on site with active grant, redirects 302 with `Cache-Control: no-store` to content host, same path and query. Owner/team site without grant responds as today. Bearer requests to `/s/` served as today, sandbox CSP kept. Empty content domain: `/s/` responds as today.
 - V14: Grants on `public` site rejected 400. Publish that would make site with grants `public` rejected 400 until grants removed.
 - V15: Republish without explicit visibility keeps existing visibility and team. New site without visibility stays `public` for compatibility. Republish keeps password and links.
 - V16: Site delete removes S3 prefix first, then grants and sessions. Published file under `__ah/` rejected 400. Migration leaves existing sites, tokens, and URLs unchanged.
 - V17: Tests cover each grant alone and both together, independent revocation, restart survival, host routing, CSRF, rate limit, and secret absence from logs and responses. Assets verified in Chrome, Firefox, Safari over real HTTPS.
 - V18: DNS-01 credential may change only TXT at `_acme-challenge.u.artifacts.noomz.space`. Stored in root-only `/root/.aws/credentials`, never in app `.env` or container.
 - V19: Content host returns 404 to requests with `Service-Worker: script`, so pages cannot register a worker that outlives revocation or intercepts `/__ah/*`.
+- V20: Public site on content host: anonymous GET/HEAD served with V12 site CSP and `Cache-Control: no-store`, no `X-Robots-Tag`. Visibility change takes effect next request. V19 applies.
 
 ## §T
 
@@ -66,11 +69,13 @@ Accepted risk (2026-11-02): keep `{id}.u.artifacts.noomz.space`. Registrable dom
 | T8 | x | Add access API and CLI; admin state and revoke; `/s/` redirect | V4,V13,I.access,I.admin |
 | T9 | x | Update nginx and deploy scripts; document in README and skill | V10,I.deploy |
 | T10 | x | Run full tests; verify both grants live over HTTPS in Chrome, Firefox, Safari | V17 |
-| T11 | . | Stop published pages on `/s/` sharing hostname with `/admin`; design needs user confirmation | B2 |
+| T11 | . | Serve public sites on content host without grant; headers per V20; isolation and header tests | V5,V12,V19,V20,I.host |
+| T12 | . | Redirect anonymous `/s/` on public sites to content host; keep bearer and no-grant paths; tests | V13,B2 |
+| T13 | . | Update README, skill, admin copy that place pages on `/s/`; deploy; verify public and granted sites live in Chrome, Firefox, Safari | V13,V17,V20 |
 
 ## §B
 
 | id | date | cause | fix |
 |---|---|---|---|
 | B1 | 2026-11-02 | CLI and server default visibility to `public`, and `SetCurrent` overwrites it, so `ah publish --site X DIR` without `--visibility` makes private site public | V15,T1 |
-| B2 | 2026-11-02 | Published pages on `/s/{id}/` share hostname with `/admin`, and sandbox allows forms and scripts, so page can show fake admin login. Live, not fixed by T1 to T10 | T11 |
+| B2 | 2026-11-02 | Published pages on `/s/{id}/` share hostname with `/admin`, and sandbox allows forms and scripts, so page can show fake admin login. Live, not fixed by T1 to T10 | V13,V20,T11,T12,T13 |
