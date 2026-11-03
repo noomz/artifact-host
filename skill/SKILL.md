@@ -35,7 +35,7 @@ Only for `owner` or `team` sites, and only the site owner's token can do it. Pub
 - Check state: `ah access SITE_ID` prints `has_password`, link ids and expiry, and `content_url`. The page for viewers is `content_url`, not the `/s/` URL.
 - Undo: `ah password clear SITE_ID`, `ah link revoke SITE_ID LINK_ID`. Takes effect on the next request.
 
-If the server says share links need `ARTIFACT_HOST_CONTENT_DOMAIN`, the feature is off on that host. Tell the user. Do not fall back to making the site public.
+If the server says passwords and share links need `ARTIFACT_HOST_CONTENT_DOMAIN`, the feature is off on that host. Tell the user. Do not fall back to making the site public.
 
 ## Do not
 

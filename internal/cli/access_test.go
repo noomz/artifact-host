@@ -9,8 +9,7 @@ import (
 )
 
 func TestAccessPrintsGrantState(t *testing.T) {
-	host, site := passwordFixture(t)
-	withContentDomain(t, httpapi.New(host, "admin", "https://artifacts.test"))
+	_, site := passwordFixture(t)
 
 	if code := Main([]string{"link", "create", string(site), "--label", "for Ada"}); code != 0 {
 		t.Fatalf("link create exit %d", code)

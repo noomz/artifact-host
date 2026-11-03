@@ -220,6 +220,19 @@ func TestPasswordRefusedOnPublicSite(t *testing.T) {
 	}
 }
 
+// I.host: empty content domain disables the feature. A stored password would
+// have no host to log in on, and would still block making the site public.
+func TestPasswordRefusedWithoutContentDomain(t *testing.T) {
+	f := newContentFixture(t)
+	site := f.site()
+	f.srv.ContentDomain = ""
+	f.handler = f.srv.Handler()
+	wantStatus(t, f.api(http.MethodPut, "/v1/sites/"+string(site)+"/password", f.token, passwordBody(t, goodPassword)), http.StatusBadRequest)
+	if _, err := f.db.SitePassword(context.Background(), site); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("password stored: %v", err)
+	}
+}
+
 // V1, V7
 func TestLoginGrantsSiteThroughTheForm(t *testing.T) {
 	f := newContentFixture(t)

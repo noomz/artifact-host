@@ -43,7 +43,6 @@ func captureStdout(t *testing.T, run func() int) (string, int) {
 
 func TestLinkCreateAndRevoke(t *testing.T) {
 	host, site := passwordFixture(t)
-	withContentDomain(t, httpapi.New(host, "admin", "https://artifacts.test"))
 	ctx := context.Background()
 
 	out, code := captureStdout(t, func() int {
@@ -83,7 +82,6 @@ func TestLinkCreateAndRevoke(t *testing.T) {
 
 func TestLinkRefusals(t *testing.T) {
 	host, site := passwordFixture(t)
-	withContentDomain(t, httpapi.New(host, "admin", "https://artifacts.test"))
 	for _, tc := range []struct {
 		name string
 		args []string

@@ -27,13 +27,19 @@ var (
 	tplGrantLogin = template.Must(template.ParseFS(adminFS, "templates/grant_login.html"))
 	tplGrantLink  = template.Must(template.ParseFS(adminFS, "templates/grant_link.html"))
 
-	errNoContentDomain = fmt.Errorf("%w: share links need ARTIFACT_HOST_CONTENT_DOMAIN set on the server", domain.ErrInvalid)
+	errNoContentDomain = fmt.Errorf("%w: passwords and share links need ARTIFACT_HOST_CONTENT_DOMAIN set on the server", domain.ErrInvalid)
 )
 
 func (s *Server) setSitePassword(w http.ResponseWriter, r *http.Request) {
 	actor, err := s.principal(r)
 	if err != nil {
 		writeErr(w, err)
+		return
+	}
+	// Without a content host there is nowhere to log in, and the stored grant
+	// would still block making the site public.
+	if s.ContentDomain == "" {
+		writeErr(w, errNoContentDomain)
 		return
 	}
 	var body struct {

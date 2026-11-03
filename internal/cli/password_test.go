@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -37,9 +36,7 @@ func passwordFixture(t *testing.T) (*sites.Host, domain.SiteID) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(httpapi.New(host, "admin", "").Handler())
-	t.Cleanup(server.Close)
-	t.Setenv("ARTIFACT_HOST_URL", server.URL)
+	withContentDomain(t, httpapi.New(host, "admin", "https://artifacts.test"))
 	t.Setenv("ARTIFACT_HOST_TOKEN", "token")
 	return host, out.Site
 }
