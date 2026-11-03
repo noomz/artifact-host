@@ -305,15 +305,16 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	p := r.PathValue("path")
 	if actor == nil && s.ContentDomain != "" {
 		id := domain.SiteID(r.PathValue("id"))
-		active, err := s.Host.Meta.HasActiveGrant(r.Context(), id, time.Now())
+		moved, err := s.onContentHost(r, id)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		if active {
-			// A grant can end, and /s/ must then respond as before, so the
-			// redirect must not be cached. The path follows a fixed host, so no
-			// path can send the viewer to another host.
+		if moved {
+			// A grant can end and a site can turn private, and /s/ must then
+			// respond as before, so the redirect must not be cached. The path
+			// follows a fixed host, so no path can send the viewer to another
+			// host.
 			target := s.contentURL(id) + (&url.URL{Path: p}).EscapedPath()
 			if r.URL.RawQuery != "" {
 				target += "?" + r.URL.RawQuery
@@ -335,6 +336,20 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-popups allow-modals")
 	_, _ = io.Copy(w, body)
+}
+
+// onContentHost reports whether anonymous browsers read the site on its content
+// host: a public site, or a private one with an active grant. Pages then never
+// run on the /admin hostname.
+func (s *Server) onContentHost(r *http.Request, id domain.SiteID) (bool, error) {
+	site, err := s.Host.Meta.Site(r.Context(), id)
+	if err != nil {
+		return false, err
+	}
+	if site.Visibility == domain.VisPublic {
+		return true, nil
+	}
+	return s.Host.Meta.HasActiveGrant(r.Context(), id, time.Now())
 }
 
 func (s *Server) adminOK(r *http.Request) bool {

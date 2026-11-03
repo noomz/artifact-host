@@ -258,22 +258,72 @@ func TestServeWithoutActiveGrantRespondsAsBefore(t *testing.T) {
 	none := f.site()
 	expired := f.site()
 	f.expiredLink(expired)
-	pub, err := f.srv.Host.Publish(context.Background(), f.owner, sites.PublishIn{
-		Visibility: domain.VisPublic,
-		Files:      []domain.File{{Path: "index.html", Body: []byte("public home")}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	wantStatus(t, f.anon(sitePath(none, "/")), http.StatusUnauthorized)
 	wantStatus(t, f.anon(sitePath(expired, "/")), http.StatusUnauthorized)
 	wantStatus(t, f.anon("/s/"+strings.Repeat("0", 32)+"/"), http.StatusNotFound)
-	w := f.anon(sitePath(pub.Site, "/"))
+}
+
+// V13, B2: a public page must not run on the /admin hostname.
+func TestServeRedirectsAnonymousPublicToContentHost(t *testing.T) {
+	f := newContentFixture(t)
+	pub := f.publish("", domain.VisPublic)
+	root := "https://" + hostOf(pub)
+	for _, tc := range []struct{ method, rest, want string }{
+		{http.MethodGet, "/", root + "/"},
+		{http.MethodHead, "/", root + "/"},
+		{http.MethodGet, "/a/b.html?x=1", root + "/a/b.html?x=1"},
+	} {
+		t.Run(tc.method+tc.rest, func(t *testing.T) {
+			w := f.do(contentReq{method: tc.method, host: mainHost, path: sitePath(pub, tc.rest)})
+			wantStatus(t, w, http.StatusFound)
+			if got := w.Header().Get("Location"); got != tc.want {
+				t.Fatalf("Location %q, want %q", got, tc.want)
+			}
+			if got := w.Header().Get("Cache-Control"); got != "no-store" {
+				t.Fatalf("Cache-Control %q", got)
+			}
+		})
+	}
+}
+
+func TestServePublicBearerNotRedirected(t *testing.T) {
+	f := newContentFixture(t)
+	pub := f.publish("", domain.VisPublic)
+	for _, bearer := range []string{"owner-token", "other-token"} {
+		w := f.do(contentReq{host: mainHost, path: sitePath(pub, "/"), bearer: bearer})
+		wantStatus(t, w, http.StatusOK)
+		if w.Body.String() != "site home" {
+			t.Fatalf("%s body %q", bearer, w.Body)
+		}
+		if got := w.Header().Get("Content-Security-Policy"); !strings.HasPrefix(got, "sandbox") {
+			t.Fatalf("%s read lost sandbox: %q", bearer, got)
+		}
+	}
+}
+
+func TestServePublicWithoutContentDomainRespondsAsBefore(t *testing.T) {
+	f := newContentFixture(t)
+	pub := f.publish("", domain.VisPublic)
+	f.srv.ContentDomain = ""
+	f.handler = f.srv.Handler()
+	w := f.anon(sitePath(pub, "/"))
 	wantStatus(t, w, http.StatusOK)
-	if w.Body.String() != "public home" {
+	if w.Body.String() != "site home" {
 		t.Fatalf("public body %q", w.Body)
 	}
+}
+
+// V13: visibility is read every request.
+func TestServeRedirectStopsWhenPublicTurnsPrivate(t *testing.T) {
+	f := newContentFixture(t)
+	site := f.publish("", domain.VisPublic)
+	path := sitePath(site, "/")
+	wantStatus(t, f.anon(path), http.StatusFound)
+	f.publish(site, domain.VisOwner)
+	wantStatus(t, f.anon(path), http.StatusUnauthorized)
+	f.publish(site, domain.VisPublic)
+	wantStatus(t, f.anon(path), http.StatusFound)
 }
 
 func TestServeNoRedirectWithoutContentDomain(t *testing.T) {
